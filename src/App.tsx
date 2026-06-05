@@ -43,6 +43,10 @@ export default function App() {
   return (
     <div className={darkMode ? 'dark' : ''} style={{ height: '100%' }}>
       <div className="flex flex-col h-full bg-brand-light dark:bg-brand-dark text-brand-dark dark:text-brand-light">
+        {/* TEST BANNER — remove after confirming import works */}
+        <div style={{ background: '#FF6B00', color: '#fff', textAlign: 'center', padding: '6px', fontSize: 13, fontWeight: 'bold', letterSpacing: 1 }}>
+          ✓ CLAUDE CODE UPDATE APPLIED
+        </div>
         {/* Main content area */}
         <div className="flex-1 overflow-hidden">
           {activeTab === 'today' && <TodayView onNavigate={setActiveTab} />}
