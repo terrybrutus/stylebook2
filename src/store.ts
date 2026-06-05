@@ -129,11 +129,15 @@ const DEFAULT_SETTINGS: Settings = {
 
 interface StoreState {
   appointments: Appointment[];
+  appointmentHistory: Appointment[][];
+  appointmentFuture: Appointment[][];
   services: Service[];
   settings: Settings;
   addAppointment: (appt: Appointment) => void;
   updateAppointment: (appt: Appointment) => void;
   deleteAppointment: (id: string) => void;
+  undo: () => void;
+  redo: () => void;
   addService: (svc: Service) => void;
   updateService: (svc: Service) => void;
   deleteService: (id: string) => void;
@@ -144,18 +148,48 @@ export const useStore = create<StoreState>()(
   persist(
     (set) => ({
       appointments: [],
+      appointmentHistory: [],
+      appointmentFuture: [],
       services: DEFAULT_SERVICES,
       settings: DEFAULT_SETTINGS,
       addAppointment: (appt) =>
-        set((state) => ({ appointments: [...state.appointments, appt] })),
+        set((state) => ({
+          appointmentHistory: [...state.appointmentHistory, state.appointments],
+          appointmentFuture: [],
+          appointments: [...state.appointments, appt],
+        })),
       updateAppointment: (appt) =>
         set((state) => ({
+          appointmentHistory: [...state.appointmentHistory, state.appointments],
+          appointmentFuture: [],
           appointments: state.appointments.map((a) => (a.id === appt.id ? appt : a)),
         })),
       deleteAppointment: (id) =>
         set((state) => ({
+          appointmentHistory: [...state.appointmentHistory, state.appointments],
+          appointmentFuture: [],
           appointments: state.appointments.filter((a) => a.id !== id),
         })),
+      undo: () =>
+        set((state) => {
+          if (state.appointmentHistory.length === 0) return state;
+          const prev = state.appointmentHistory[state.appointmentHistory.length - 1];
+          return {
+            appointmentHistory: state.appointmentHistory.slice(0, -1),
+            appointmentFuture: [state.appointments, ...state.appointmentFuture],
+            appointments: prev,
+          };
+        }),
+      redo: () =>
+        set((state) => {
+          if (state.appointmentFuture.length === 0) return state;
+          const next = state.appointmentFuture[0];
+          return {
+            appointmentHistory: [...state.appointmentHistory, state.appointments],
+            appointmentFuture: state.appointmentFuture.slice(1),
+            appointments: next,
+          };
+        }),
       addService: (svc) =>
         set((state) => ({ services: [...state.services, svc] })),
       updateService: (svc) =>
@@ -171,6 +205,12 @@ export const useStore = create<StoreState>()(
     }),
     {
       name: 'stylebook-storage',
+      partialize: (state) => ({
+        appointments: state.appointments,
+        services: state.services,
+        settings: state.settings,
+        // appointmentHistory and appointmentFuture are NOT persisted
+      }),
     }
   )
 );

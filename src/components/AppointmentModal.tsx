@@ -79,8 +79,14 @@ export default function AppointmentModal({ appointment, initialDate, initialTime
     ? phases.reduce((sum, p) => sum + p.duration, 0)
     : singleDuration;
 
-  // Past clients for autocomplete
-  const pastClients = Array.from(new Set(appointments.map((a) => a.clientName))).filter(Boolean);
+  // Past clients for autocomplete — include last service info
+  const clientLastApptMap: Record<string, Appointment> = {};
+  for (const a of appointments) {
+    if (!clientLastApptMap[a.clientName] || a.date > clientLastApptMap[a.clientName].date) {
+      clientLastApptMap[a.clientName] = a;
+    }
+  }
+  const pastClients = Object.keys(clientLastApptMap).filter(Boolean);
 
   const filteredClients = clientName
     ? pastClients.filter((c) => c.toLowerCase().includes(clientName.toLowerCase()) && c !== clientName)
@@ -165,13 +171,8 @@ export default function AppointmentModal({ appointment, initialDate, initialTime
   const durationHours = Math.floor(singleDuration / 60);
   const durationMins = singleDuration % 60;
 
-  // Rebook: last appointment per client
-  const clientLastAppt: Record<string, Appointment> = {};
-  for (const a of appointments) {
-    if (!clientLastAppt[a.clientName] || a.date > clientLastAppt[a.clientName].date) {
-      clientLastAppt[a.clientName] = a;
-    }
-  }
+  // Rebook: reuse clientLastApptMap computed above
+  const clientLastAppt = clientLastApptMap;
 
   return (
     <div className="fixed inset-0 z-50 bg-black/60 flex items-end sm:items-center justify-center" onClick={onClose}>
@@ -239,17 +240,28 @@ export default function AppointmentModal({ appointment, initialDate, initialTime
               placeholder="Client name"
             />
             {showAutocomplete && filteredClients.length > 0 && (
-              <ul className="absolute z-50 left-0 right-0 bg-white dark:bg-brand-dark border border-gray-200 dark:border-brand-mid rounded-lg shadow-lg mt-1 max-h-32 overflow-y-auto">
-                {filteredClients.map((c) => (
-                  <li key={c}>
-                    <button
-                      onMouseDown={() => { setClientName(c); setShowAutocomplete(false); }}
-                      className="w-full text-left px-3 py-2 text-sm hover:bg-brand-teal/20"
-                    >
-                      {c}
-                    </button>
-                  </li>
-                ))}
+              <ul className="absolute z-50 left-0 right-0 bg-white dark:bg-brand-dark border border-gray-200 dark:border-brand-mid rounded-lg shadow-lg mt-1 max-h-40 overflow-y-auto">
+                {filteredClients.map((c) => {
+                  const lastAppt = clientLastApptMap[c];
+                  const lastDate = lastAppt
+                    ? new Date(lastAppt.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                    : '';
+                  return (
+                    <li key={c}>
+                      <button
+                        onMouseDown={() => { setClientName(c); setShowAutocomplete(false); }}
+                        className="w-full text-left px-3 py-2 hover:bg-brand-teal/20"
+                      >
+                        <div className="font-semibold text-sm text-brand-dark dark:text-brand-light">{c}</div>
+                        {lastAppt && (
+                          <div className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+                            Last: {lastAppt.serviceName} on {lastDate}
+                          </div>
+                        )}
+                      </button>
+                    </li>
+                  );
+                })}
               </ul>
             )}
           </div>
