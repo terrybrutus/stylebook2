@@ -13,6 +13,27 @@ import {
 import { useAppStore } from "../store/useAppStore";
 import type { Appointment } from "../types";
 
+function timeToMinutes(t: string) {
+  const [h, m] = t.split(":").map(Number);
+  return h * 60 + m;
+}
+
+function findConflicts(appts: Appointment[]) {
+  const pairs: [Appointment, Appointment][] = [];
+  for (let i = 0; i < appts.length; i++) {
+    for (let j = i + 1; j < appts.length; j++) {
+      const a = appts[i];
+      const b = appts[j];
+      const aEnd = timeToMinutes(a.startTime) + a.durationMinutes;
+      const bEnd = timeToMinutes(b.startTime) + b.durationMinutes;
+      if (timeToMinutes(a.startTime) < bEnd && timeToMinutes(b.startTime) < aEnd) {
+        pairs.push([a, b]);
+      }
+    }
+  }
+  return pairs;
+}
+
 export default function Today() {
   const today = getTodayString();
   const appointments = useAppStore(
@@ -67,6 +88,8 @@ export default function Today() {
     });
   }
 
+  const conflictPairs = findConflicts(appointments);
+
   return (
     <div className="flex flex-col h-full" data-ocid="today.page">
       {/* Date header */}
@@ -86,11 +109,18 @@ export default function Today() {
             Add
           </button>
         </div>
-        <p className="text-sm text-muted-foreground mt-0.5">
-          {appointments.length === 0
-            ? "No appointments today"
-            : `${appointments.length} appointment${appointments.length !== 1 ? "s" : ""}`}
-        </p>
+        {appointments.length === 0 ? (
+          <p className="text-sm text-muted-foreground mt-0.5">
+            No appointments today
+          </p>
+        ) : (
+          <p className="text-sm text-muted-foreground mt-0.5">
+            {appointments.length} appointment{appointments.length !== 1 ? "s" : ""} ·{" "}
+            <span className="font-semibold text-accent ml-1">
+              ${appointments.reduce((sum, a) => sum + a.price, 0).toFixed(2)} projected
+            </span>
+          </p>
+        )}
       </div>
 
       {/* Scrollable content */}
@@ -134,6 +164,35 @@ export default function Today() {
             </div>
           )}
         </div>
+
+        {/* Scheduling conflicts */}
+        {conflictPairs.length > 0 && (
+          <div className="mx-4 mb-4 p-3 bg-destructive/10 border border-destructive/30 rounded-xl">
+            <p className="text-sm font-bold text-destructive mb-2">
+              Scheduling Conflicts ({conflictPairs.length})
+            </p>
+            {conflictPairs.map(([a, b], i) => (
+              // biome-ignore lint/suspicious/noArrayIndexKey: stable list of conflict pairs
+              <div key={i} className="text-xs text-destructive/80 flex flex-wrap gap-1 mb-1">
+                <button
+                  type="button"
+                  className="underline font-semibold"
+                  onClick={() => openEdit(a)}
+                >
+                  {a.clientName} ({a.serviceName})
+                </button>
+                <span>overlaps</span>
+                <button
+                  type="button"
+                  className="underline font-semibold"
+                  onClick={() => openEdit(b)}
+                >
+                  {b.clientName} ({b.serviceName})
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* Quick Rebook section */}
         {appointments.length > 0 && (

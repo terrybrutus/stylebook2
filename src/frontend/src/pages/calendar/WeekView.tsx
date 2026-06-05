@@ -98,6 +98,7 @@ export function WeekView({ anchorDate, onModalChange, onDayClick }: Props) {
 
   // Mobile 3-day swipe state
   const [mobileStartIdx, setMobileStartIdx] = useState(0);
+  const [slideClass, setSlideClass] = useState('');
   const touchStartX = useRef<number>(0);
   const touchStartY = useRef<number>(0);
 
@@ -182,6 +183,16 @@ export function WeekView({ anchorDate, onModalChange, onDayClick }: Props) {
     ? weekDates.slice(mobileStartIdx, mobileStartIdx + 3)
     : weekDates;
 
+  function changeMobileStart(newIdx: number) {
+    const dir = newIdx > mobileStartIdx ? 'translate-x-4' : '-translate-x-4';
+    setSlideClass(`${dir} opacity-50`);
+    setTimeout(() => {
+      setMobileStartIdx(newIdx);
+      setSlideClass('opacity-100 translate-x-0 transition-all duration-150');
+      setTimeout(() => setSlideClass(''), 150);
+    }, 50);
+  }
+
   function handleSwipeStart(e: React.TouchEvent) {
     touchStartX.current = e.touches[0].clientX;
     touchStartY.current = e.touches[0].clientY;
@@ -191,8 +202,8 @@ export function WeekView({ anchorDate, onModalChange, onDayClick }: Props) {
     const dx = e.changedTouches[0].clientX - touchStartX.current;
     const dy = e.changedTouches[0].clientY - touchStartY.current;
     if (Math.abs(dx) < Math.abs(dy) || Math.abs(dx) < 40) return;
-    if (dx < 0) setMobileStartIdx((p) => Math.min(p + 3, 4));
-    if (dx > 0) setMobileStartIdx((p) => Math.max(p - 3, 0));
+    if (dx < 0) changeMobileStart(Math.min(mobileStartIdx + 3, 4));
+    if (dx > 0) changeMobileStart(Math.max(mobileStartIdx - 3, 0));
   }
 
   // Build blocks per day
@@ -287,12 +298,38 @@ export function WeekView({ anchorDate, onModalChange, onDayClick }: Props) {
         })}
       </div>
 
+      {/* Dot indicators — mobile portrait only */}
+      {isMobilePortrait && (
+        <div className="flex justify-center gap-2 py-1.5 bg-background border-b border-border flex-shrink-0">
+          {weekDates.map((date, i) => {
+            const isVisible = i >= mobileStartIdx && i < mobileStartIdx + 3;
+            const isToday = dateToString(date) === todayStr;
+            return (
+              <button
+                key={i}
+                type="button"
+                onClick={() => changeMobileStart(Math.min(Math.max(i - 1, 0), 4))}
+                className={`rounded-full transition-all ${
+                  isVisible
+                    ? isToday
+                      ? 'w-2.5 h-2.5 bg-accent'
+                      : 'w-2 h-2 bg-foreground/60'
+                    : 'w-2 h-2 border border-foreground/30'
+                }`}
+                aria-label={`Go to day ${i + 1}`}
+              />
+            );
+          })}
+        </div>
+      )}
+
       {/* Scrollable time grid */}
       <div
         className="flex flex-1 overflow-auto"
+        style={{ touchAction: 'pan-y', overscrollBehavior: 'none' }}
         data-ocid="calendar.week_scroll"
       >
-        <div className="flex min-w-0 w-full" style={{ height: totalPx }}>
+        <div className={`flex min-w-0 w-full ${slideClass}`} style={{ height: totalPx }}>
           {/* Time labels */}
           <div
             className="w-14 flex-shrink-0 bg-background border-r border-border relative z-10"
