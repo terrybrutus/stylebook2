@@ -306,7 +306,7 @@ export function WeekView({ anchorDate, onModalChange, onDayClick }: Props) {
             const isToday = dateToString(date) === todayStr;
             return (
               <button
-                key={i}
+                key={dateToString(date)}
                 type="button"
                 onClick={() => changeMobileStart(Math.min(Math.max(i - 1, 0), 4))}
                 className={`rounded-full transition-all ${
