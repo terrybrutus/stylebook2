@@ -1,7 +1,7 @@
-import { c as createLucideIcon, u as useAppStore, z, j as jsxRuntimeExports, M as Moon, m as Sun, n as updateSettings } from "./index-BUnhKn-w.js";
-import { u as useShallow } from "./shallow-DW0QPtHQ.js";
-import { C as Calendar } from "./calendar-Q7rp3eKK.js";
-import { C as Clock } from "./clock-DVuaqdnk.js";
+import { c as createLucideIcon, u as useAppStore, z, j as jsxRuntimeExports, M as Moon, m as Sun, n as updateSettings } from "./index-C28LwCdI.js";
+import { u as useShallow } from "./shallow-B4tNjq6h.js";
+import { C as Calendar } from "./calendar-DIRF3J41.js";
+import { C as Clock } from "./clock-gV4h8ztK.js";
 /**
  * @license lucide-react v0.511.0 - ISC
  *

@@ -1,4 +1,4 @@
-const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["assets/Today-Bq75XJ7e.js","assets/AppointmentModal-CM4Vg7FT.js","assets/utils-OLsRQTl3.js","assets/shallow-DW0QPtHQ.js","assets/triangle-alert-CML8_Yos.js","assets/clock-DVuaqdnk.js","assets/Calendar-CLNBxa6d.js","assets/chevron-right-NlKZvk8X.js","assets/Clients-BQXo8H8D.js","assets/calendar-Q7rp3eKK.js","assets/Services-WuhDTAk3.js","assets/Settings-B297fNAk.js"])))=>i.map(i=>d[i]);
+const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["assets/Today-DjQCrE1q.js","assets/AppointmentModal-CaVWxjLw.js","assets/utils-VpTwBoiu.js","assets/shallow-B4tNjq6h.js","assets/triangle-alert-uzvYPtP7.js","assets/clock-gV4h8ztK.js","assets/Calendar-BPpwPT8O.js","assets/chevron-right-CtrInTbJ.js","assets/Clients-DpwWd1Ci.js","assets/calendar-DIRF3J41.js","assets/Services-BxVcMSjn.js","assets/Settings-DJy49vtp.js"])))=>i.map(i=>d[i]);
 var __defProp = Object.defineProperty;
 var __typeError = (msg) => {
   throw TypeError(msg);
@@ -32337,11 +32337,11 @@ function useInitData() {
     void loadAll();
   }, []);
 }
-const TodayPage = reactExports.lazy(() => __vitePreload(() => import("./Today-Bq75XJ7e.js"), true ? __vite__mapDeps([0,1,2,3,4,5]) : void 0));
-const CalendarPage = reactExports.lazy(() => __vitePreload(() => import("./Calendar-CLNBxa6d.js"), true ? __vite__mapDeps([6,1,2,3,4,7]) : void 0));
-const ClientsPage = reactExports.lazy(() => __vitePreload(() => import("./Clients-BQXo8H8D.js"), true ? __vite__mapDeps([8,2,3,7,5,9]) : void 0));
-const ServicesPage = reactExports.lazy(() => __vitePreload(() => import("./Services-WuhDTAk3.js"), true ? __vite__mapDeps([10,2,4,3]) : void 0));
-const SettingsPage = reactExports.lazy(() => __vitePreload(() => import("./Settings-B297fNAk.js"), true ? __vite__mapDeps([11,3,9,5]) : void 0));
+const TodayPage = reactExports.lazy(() => __vitePreload(() => import("./Today-DjQCrE1q.js"), true ? __vite__mapDeps([0,1,2,3,4,5]) : void 0));
+const CalendarPage = reactExports.lazy(() => __vitePreload(() => import("./Calendar-BPpwPT8O.js"), true ? __vite__mapDeps([6,1,2,3,4,7]) : void 0));
+const ClientsPage = reactExports.lazy(() => __vitePreload(() => import("./Clients-DpwWd1Ci.js"), true ? __vite__mapDeps([8,2,3,7,5,9]) : void 0));
+const ServicesPage = reactExports.lazy(() => __vitePreload(() => import("./Services-BxVcMSjn.js"), true ? __vite__mapDeps([10,2,4,3]) : void 0));
+const SettingsPage = reactExports.lazy(() => __vitePreload(() => import("./Settings-DJy49vtp.js"), true ? __vite__mapDeps([11,3,9,5]) : void 0));
 function PageLoader() {
   return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex items-center justify-center h-full min-h-[200px]", children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "w-8 h-8 border-2 border-accent border-t-transparent rounded-full animate-spin" }) });
 }

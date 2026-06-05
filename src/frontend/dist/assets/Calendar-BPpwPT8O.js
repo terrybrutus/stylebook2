@@ -1,9 +1,9 @@
-import { c as createLucideIcon, u as useAppStore, r as reactExports, j as jsxRuntimeExports, a as useRouterState, b as useNavigate, d as CalendarDays } from "./index-BUnhKn-w.js";
-import { B as Button, A as AppointmentModal } from "./AppointmentModal-CM4Vg7FT.js";
-import { d as generateTimeSlots, e as getCurrentTimePixels, t as timeToPixels, h as durationToPixels, a as formatTime12, i as hexToRgba, b as formatDuration, c as formatPrice, j as getMonthGrid, k as dateToString, l as getWeekDates } from "./utils-OLsRQTl3.js";
-import { u as useShallow } from "./shallow-DW0QPtHQ.js";
-import { C as ChevronRight } from "./chevron-right-NlKZvk8X.js";
-import { P as Plus } from "./triangle-alert-CML8_Yos.js";
+import { c as createLucideIcon, u as useAppStore, r as reactExports, j as jsxRuntimeExports, a as useRouterState, b as useNavigate, d as CalendarDays } from "./index-C28LwCdI.js";
+import { B as Button, A as AppointmentModal } from "./AppointmentModal-CaVWxjLw.js";
+import { d as generateTimeSlots, e as getCurrentTimePixels, t as timeToPixels, h as durationToPixels, a as formatTime12, i as hexToRgba, b as formatDuration, c as formatPrice, j as getMonthGrid, k as dateToString, l as getWeekDates } from "./utils-VpTwBoiu.js";
+import { u as useShallow } from "./shallow-B4tNjq6h.js";
+import { C as ChevronRight } from "./chevron-right-CtrInTbJ.js";
+import { P as Plus } from "./triangle-alert-uzvYPtP7.js";
 /**
  * @license lucide-react v0.511.0 - ISC
  *
@@ -43,7 +43,7 @@ const __iconNode = [
   ["path", { d: "M15 3v18", key: "14nvp0" }]
 ];
 const Grid3x3 = createLucideIcon("grid-3x3", __iconNode);
-const HOUR_PX$1 = 60;
+const HOUR_PX = 60;
 function getBlockLabel$1(appt, phaseIndex) {
   if (appt.phases.length === 0) {
     return {
@@ -77,7 +77,7 @@ function DayView({ date, onModalChange }) {
   const startHour = Number(settings.workingHoursStart.split(":")[0]);
   const endHour = Number(settings.workingHoursEnd.split(":")[0]);
   const timeSlots = generateTimeSlots(startHour, endHour);
-  const totalPx = (endHour - startHour) * HOUR_PX$1;
+  const totalPx = (endHour - startHour) * HOUR_PX;
   const isToday = date === (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
   const [currentTimePx, setCurrentTimePx] = reactExports.useState(
     () => getCurrentTimePixels(startHour)
@@ -156,7 +156,7 @@ function DayView({ date, onModalChange }) {
     } else {
       appt.phases.forEach((phase, i) => {
         const startMin = getPhaseStartMinutes$1(phase);
-        const topPx = (startMin - startHour * 60) / 60 * HOUR_PX$1;
+        const topPx = (startMin - startHour * 60) / 60 * HOUR_PX;
         const height = Math.max(durationToPixels(phase.durationMinutes), 20);
         const { label, isProcessing } = getBlockLabel$1(appt, i);
         blocks.push({
@@ -446,7 +446,15 @@ function MonthView({ year, month, onDayClick, onModalChange }) {
     }
   );
 }
-const HOUR_PX = 60;
+const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const MIN_PX = 2.5;
+function timeStrToMinutes(time) {
+  const [h, m] = time.split(":").map(Number);
+  return h * 60 + m;
+}
+function minutesToPx(minutes, startMinutes) {
+  return (minutes - startMinutes) * MIN_PX;
+}
 function getPhaseStartMinutes(phase) {
   const timePart = phase.startTime.includes("T") ? phase.startTime.split("T")[1].slice(0, 5) : phase.startTime.slice(0, 5);
   const [h, m] = timePart.split(":").map(Number);
@@ -454,7 +462,10 @@ function getPhaseStartMinutes(phase) {
 }
 function getBlockLabel(appt, phaseIndex) {
   if (appt.phases.length === 0) {
-    return { label: appt.clientName, isProcessing: false };
+    return {
+      label: `${appt.clientName} — ${appt.serviceName}`,
+      isProcessing: false
+    };
   }
   const phase = appt.phases[phaseIndex];
   if (!phase) return { label: appt.clientName, isProcessing: false };
@@ -462,40 +473,47 @@ function getBlockLabel(appt, phaseIndex) {
     return { label: `${appt.clientName} — Processing`, isProcessing: true };
   }
   if (phaseIndex === 0) {
-    return { label: appt.clientName, isProcessing: false };
+    return {
+      label: `${appt.clientName} — ${appt.serviceName}`,
+      isProcessing: false
+    };
   }
   return { label: `${appt.clientName} — ${phase.name}`, isProcessing: false };
 }
-function WeekView({
-  anchorDate,
-  onModalChange,
-  onDayClick: _onDayClick
-}) {
-  const settings = useAppStore(useShallow((s) => s.settings));
-  const allAppointments = useAppStore(useShallow((s) => s.appointments));
+function WeekView({ anchorDate, onModalChange, onDayClick }) {
+  const { settings, allAppointments, deleteAppointment } = useAppStore(
+    useShallow((s) => ({
+      settings: s.settings,
+      allAppointments: s.appointments,
+      deleteAppointment: s.deleteAppointment
+    }))
+  );
   const startHour = Number(settings.workingHoursStart.split(":")[0]);
   const endHour = Number(settings.workingHoursEnd.split(":")[0]);
+  const startMinutes = startHour * 60;
+  const endMinutes = endHour * 60;
+  const totalMinutes = endMinutes - startMinutes;
+  const totalPx = totalMinutes * MIN_PX;
   const timeSlots = generateTimeSlots(startHour, endHour);
-  const totalPx = (endHour - startHour) * HOUR_PX;
   const weekDates = getWeekDates(anchorDate, settings.startWeekOnMonday);
-  const todayStr = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
-  const [currentTimePx, setCurrentTimePx] = reactExports.useState(
-    () => getCurrentTimePixels(startHour)
-  );
-  const [contextMenu, setContextMenu] = reactExports.useState(null);
-  const [mobileStartIdx, setMobileStartIdx] = reactExports.useState(() => {
-    const todayIdx = weekDates.findIndex((d) => dateToString(d) === todayStr);
-    return todayIdx >= 0 ? Math.max(0, Math.min(todayIdx, 4)) : 0;
+  const todayStr = dateToString(/* @__PURE__ */ new Date());
+  const [currentTimePx, setCurrentTimePx] = reactExports.useState(() => {
+    const now = /* @__PURE__ */ new Date();
+    return minutesToPx(now.getHours() * 60 + now.getMinutes(), startHour * 60);
   });
+  const [contextMenu, setContextMenu] = reactExports.useState(null);
+  const [mobileStartIdx, setMobileStartIdx] = reactExports.useState(0);
   const touchStartX = reactExports.useRef(0);
   const touchStartY = reactExports.useRef(0);
   reactExports.useEffect(() => {
-    const id = setInterval(
-      () => setCurrentTimePx(getCurrentTimePixels(startHour)),
-      3e4
-    );
+    const id = setInterval(() => {
+      const now = /* @__PURE__ */ new Date();
+      setCurrentTimePx(
+        minutesToPx(now.getHours() * 60 + now.getMinutes(), startMinutes)
+      );
+    }, 3e4);
     return () => clearInterval(id);
-  }, [startHour]);
+  }, [startMinutes]);
   reactExports.useEffect(() => {
     if (!contextMenu) return;
     function handler() {
@@ -561,35 +579,36 @@ function WeekView({
     const dx = e.changedTouches[0].clientX - touchStartX.current;
     const dy = e.changedTouches[0].clientY - touchStartY.current;
     if (Math.abs(dx) < Math.abs(dy) || Math.abs(dx) < 40) return;
-    if (dx < 0 && mobileStartIdx < 4) setMobileStartIdx((p) => p + 1);
-    if (dx > 0 && mobileStartIdx > 0) setMobileStartIdx((p) => p - 1);
+    if (dx < 0) setMobileStartIdx((p) => Math.min(p + 3, 4));
+    if (dx > 0) setMobileStartIdx((p) => Math.max(p - 3, 0));
   }
   function buildBlocks(dateStr) {
     const dayAppts = allAppointments.filter((a) => a.date === dateStr);
     const result = [];
     for (const appt of dayAppts) {
       if (appt.phases.length === 0) {
-        const top = timeToPixels(appt.startTime, startHour);
-        const height = Math.max(durationToPixels(appt.durationMinutes), 20);
+        const apptStartMin = timeStrToMinutes(appt.startTime);
+        const topPx = minutesToPx(apptStartMin, startMinutes);
+        const heightPx = Math.max(appt.durationMinutes * MIN_PX, 20);
         result.push({
           appt,
-          topPx: top,
-          heightPx: height,
+          topPx,
+          heightPx,
           isProcessing: false,
-          label: appt.clientName,
+          label: `${appt.clientName} — ${appt.serviceName}`,
           color: appt.color,
           phaseIndex: -1
         });
       } else {
         for (const [i, phase] of appt.phases.entries()) {
-          const startMin = getPhaseStartMinutes(phase);
-          const topPx = (startMin - startHour * 60) / 60 * HOUR_PX;
-          const height = Math.max(durationToPixels(phase.durationMinutes), 20);
+          const phaseStartMin = getPhaseStartMinutes(phase);
+          const topPx = minutesToPx(phaseStartMin, startMinutes);
+          const heightPx = Math.max(phase.durationMinutes * MIN_PX, 20);
           const { label, isProcessing } = getBlockLabel(appt, i);
           result.push({
             appt,
             topPx,
-            heightPx: height,
+            heightPx,
             isProcessing,
             label,
             color: appt.color,
@@ -603,25 +622,66 @@ function WeekView({
   return /* @__PURE__ */ jsxRuntimeExports.jsxs(
     "div",
     {
-      className: "flex flex-1 overflow-hidden select-none",
+      className: "flex flex-col flex-1 overflow-hidden select-none",
       onTouchStart: isMobilePortrait ? handleSwipeStart : void 0,
       onTouchEnd: isMobilePortrait ? handleSwipeEnd : void 0,
       children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-shrink-0 border-b border-border bg-card", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "w-14 flex-shrink-0 border-r border-border" }),
+          visibleDates.map((date) => {
+            const dateStr = dateToString(date);
+            const isToday = dateStr === todayStr;
+            const dayLabel = DAY_LABELS[date.getDay()];
+            const dayNum = date.getDate();
+            return /* @__PURE__ */ jsxRuntimeExports.jsxs(
+              "button",
+              {
+                type: "button",
+                className: "flex-1 flex flex-col items-center justify-center py-1.5 border-r border-border cursor-pointer hover:bg-muted/30 transition-colors",
+                onClick: () => onDayClick == null ? void 0 : onDayClick(dateStr),
+                "data-ocid": `week.day_header.${dayNum}`,
+                children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(
+                    "span",
+                    {
+                      className: "text-[10px] uppercase tracking-wider font-medium",
+                      style: { color: isToday ? "#00ADB5" : void 0 },
+                      children: dayLabel
+                    }
+                  ),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(
+                    "span",
+                    {
+                      className: "text-sm font-bold leading-none mt-0.5 w-7 h-7 flex items-center justify-center rounded-full",
+                      style: {
+                        background: isToday ? "#00ADB5" : "transparent",
+                        color: isToday ? "#fff" : void 0
+                      },
+                      children: dayNum
+                    }
+                  )
+                ]
+              },
+              dateStr
+            );
+          })
+        ] }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(
           "div",
           {
             className: "flex flex-1 overflow-auto",
             "data-ocid": "calendar.week_scroll",
-            children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex min-w-0", style: { height: totalPx }, children: [
+            children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex min-w-0 w-full", style: { height: totalPx }, children: [
               /* @__PURE__ */ jsxRuntimeExports.jsx(
                 "div",
                 {
                   className: "w-14 flex-shrink-0 bg-background border-r border-border relative z-10",
                   style: { height: totalPx },
                   children: timeSlots.map((slot) => {
-                    const top = timeToPixels(slot, startHour);
-                    const [_h, m] = slot.split(":").map(Number);
-                    const isHour = m === 0;
+                    const [sh, sm] = slot.split(":").map(Number);
+                    const slotMinutes = sh * 60 + sm;
+                    const top = minutesToPx(slotMinutes, startMinutes);
+                    const isHour = sm === 0;
                     return /* @__PURE__ */ jsxRuntimeExports.jsx(
                       "div",
                       {
@@ -631,7 +691,7 @@ function WeekView({
                           "span",
                           {
                             className: `text-[10px] leading-none ${isHour ? "text-muted-foreground font-medium" : "text-muted-foreground/50"}`,
-                            children: isHour ? formatTime12(slot) : m === 30 ? ":30" : ""
+                            children: isHour ? formatTime12(slot) : sm === 30 ? ":30" : ""
                           }
                         )
                       },
@@ -647,13 +707,14 @@ function WeekView({
                 return /* @__PURE__ */ jsxRuntimeExports.jsxs(
                   "div",
                   {
-                    className: `flex-1 relative border-r border-border bg-white ${isToday ? "" : ""}`,
+                    className: "flex-1 relative border-r border-border bg-background",
                     style: { height: totalPx, minWidth: 0 },
+                    "data-ocid": `week.day_column.${dateStr}`,
                     children: [
                       timeSlots.map((slot) => {
-                        const top = timeToPixels(slot, startHour);
-                        const [_h, m] = slot.split(":").map(Number);
-                        const isHour = m === 0;
+                        const [sh, sm] = slot.split(":").map(Number);
+                        const top = minutesToPx(sh * 60 + sm, startMinutes);
+                        const isHour = sm === 0;
                         return /* @__PURE__ */ jsxRuntimeExports.jsx(
                           "div",
                           {
@@ -664,12 +725,13 @@ function WeekView({
                         );
                       }),
                       timeSlots.map((slot) => {
-                        const top = timeToPixels(slot, startHour);
+                        const [sh, sm] = slot.split(":").map(Number);
+                        const top = minutesToPx(sh * 60 + sm, startMinutes);
                         return /* @__PURE__ */ jsxRuntimeExports.jsx(
                           "div",
                           {
                             className: "absolute left-0 right-0 cursor-pointer hover:bg-accent/5 transition-colors",
-                            style: { top, height: 30, zIndex: 1 },
+                            style: { top, height: MIN_PX * 30, zIndex: 1 },
                             role: "button",
                             tabIndex: 0,
                             onClick: () => handleSlotClick(dateStr, slot),
@@ -745,11 +807,7 @@ function WeekView({
                   type: "button",
                   className: "w-full text-left px-4 py-2.5 text-sm text-destructive hover:bg-muted transition-colors",
                   onClick: () => {
-                    onModalChange({
-                      isOpen: true,
-                      mode: "edit",
-                      appointment: contextMenu.appointment
-                    });
+                    deleteAppointment(contextMenu.appointment.id);
                     setContextMenu(null);
                   },
                   "data-ocid": "appointment.delete_button",
@@ -771,9 +829,10 @@ function WeekBlock({
   onTouchEnd
 }) {
   const { appt, topPx, heightPx, isProcessing, label, color } = block;
-  const isShort = heightPx < 40;
+  const isShort = heightPx < 50;
+  const zIndex = isProcessing ? 5 : 10;
   const bgStyle = isProcessing ? {
-    background: `repeating-linear-gradient(45deg, ${hexToRgba(color, 0.15)}, ${hexToRgba(color, 0.15)} 4px, ${hexToRgba(color, 0.35)} 4px, ${hexToRgba(color, 0.35)} 8px)`,
+    background: `repeating-linear-gradient(45deg, ${hexToRgba(color, 0.12)}, ${hexToRgba(color, 0.12)} 4px, ${hexToRgba(color, 0.35)} 4px, ${hexToRgba(color, 0.35)} 8px)`,
     borderColor: hexToRgba(color, 0.5)
   } : {
     backgroundColor: hexToRgba(color, 0.85),
@@ -786,8 +845,8 @@ function WeekBlock({
       className: "absolute left-0.5 right-0.5 rounded border overflow-hidden cursor-pointer select-none text-left",
       style: {
         top: topPx + 1,
-        height: heightPx - 2,
-        zIndex: 10,
+        height: Math.max(heightPx - 2, 4),
+        zIndex,
         ...bgStyle
       },
       onClick: (e) => {
@@ -798,28 +857,42 @@ function WeekBlock({
       onTouchStart: (e) => onTouchStart(e, appt),
       onTouchEnd,
       "data-ocid": "appointment.card",
-      children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "px-1 py-0.5 h-full overflow-hidden flex flex-col", children: isProcessing ? /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-[9px] text-foreground/60 italic leading-tight", children: "processing" }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+      children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "px-1 py-0.5 h-full overflow-hidden flex flex-col", children: isProcessing ? (
+        // Processing phase: show client name so context is clear
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "span",
+          {
+            className: "text-[9px] text-foreground/70 italic leading-tight",
+            style: { wordBreak: "break-word", overflowWrap: "break-word" },
+            children: label
+          }
+        )
+      ) : isShort ? (
+        // Short block (<50px): client name only, no truncation
         /* @__PURE__ */ jsxRuntimeExports.jsx(
           "span",
           {
             className: "text-[10px] font-bold leading-tight text-foreground",
-            style: {
-              wordBreak: "break-word",
-              overflowWrap: "break-word",
-              hyphens: "auto"
-            },
-            children: label
+            style: { wordBreak: "break-word", overflowWrap: "break-word" },
+            children: appt.clientName
           }
-        ),
-        !isShort && /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+        )
+      ) : (
+        // Full block: client name, service name, duration · price
+        /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "span",
+            {
+              className: "text-[10px] font-bold leading-tight text-foreground",
+              style: { wordBreak: "break-word", overflowWrap: "break-word" },
+              children: appt.clientName
+            }
+          ),
           /* @__PURE__ */ jsxRuntimeExports.jsx(
             "span",
             {
               className: "text-[9px] text-foreground/80 leading-tight mt-0.5",
-              style: {
-                wordBreak: "break-word",
-                overflowWrap: "break-word"
-              },
+              style: { wordBreak: "break-word", overflowWrap: "break-word" },
               children: appt.serviceName
             }
           ),
@@ -829,7 +902,7 @@ function WeekBlock({
             formatPrice(appt.price)
           ] })
         ] })
-      ] }) })
+      ) })
     }
   );
 }

@@ -1,7 +1,7 @@
-import { c as createLucideIcon, u as useAppStore, r as reactExports, i as updateService, k as createService, j as jsxRuntimeExports, l as deleteService, S as Scissors } from "./index-BUnhKn-w.js";
-import { X, b as formatDuration, c as formatPrice } from "./utils-OLsRQTl3.js";
-import { P as Plus, T as TriangleAlert } from "./triangle-alert-CML8_Yos.js";
-import { u as useShallow } from "./shallow-DW0QPtHQ.js";
+import { c as createLucideIcon, u as useAppStore, r as reactExports, i as updateService, k as createService, j as jsxRuntimeExports, l as deleteService, S as Scissors } from "./index-C28LwCdI.js";
+import { X, b as formatDuration, c as formatPrice } from "./utils-VpTwBoiu.js";
+import { P as Plus, T as TriangleAlert } from "./triangle-alert-uzvYPtP7.js";
+import { u as useShallow } from "./shallow-B4tNjq6h.js";
 /**
  * @license lucide-react v0.511.0 - ISC
  *

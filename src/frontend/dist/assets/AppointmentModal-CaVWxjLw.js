@@ -1,7 +1,7 @@
-import { c as createLucideIcon, r as reactExports, j as jsxRuntimeExports, R as React, u as useAppStore, g as getClientNames, e as createAppointment, f as updateAppointment, h as React$1 } from "./index-BUnhKn-w.js";
-import { m as clsx, n as cn, X, b as formatDuration, g as getTodayString, o as doBlocksOverlap } from "./utils-OLsRQTl3.js";
-import { u as useShallow } from "./shallow-DW0QPtHQ.js";
-import { T as TriangleAlert } from "./triangle-alert-CML8_Yos.js";
+import { c as createLucideIcon, r as reactExports, j as jsxRuntimeExports, R as React, u as useAppStore, g as getClientNames, e as createAppointment, f as updateAppointment, h as React$1 } from "./index-C28LwCdI.js";
+import { m as clsx, n as cn, X, b as formatDuration, g as getTodayString, o as doBlocksOverlap } from "./utils-VpTwBoiu.js";
+import { u as useShallow } from "./shallow-B4tNjq6h.js";
+import { T as TriangleAlert } from "./triangle-alert-uzvYPtP7.js";
 /**
  * @license lucide-react v0.511.0 - ISC
  *

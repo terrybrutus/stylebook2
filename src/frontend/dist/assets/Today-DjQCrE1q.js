@@ -1,9 +1,9 @@
-import { c as createLucideIcon, u as useAppStore, r as reactExports, j as jsxRuntimeExports, C as CalendarCheck, S as Scissors } from "./index-BUnhKn-w.js";
-import { A as AppointmentModal } from "./AppointmentModal-CM4Vg7FT.js";
-import { f as formatDate, g as getTodayString, a as formatTime12, b as formatDuration, c as formatPrice } from "./utils-OLsRQTl3.js";
-import { u as useShallow } from "./shallow-DW0QPtHQ.js";
-import { C as Clock } from "./clock-DVuaqdnk.js";
-import { P as Plus } from "./triangle-alert-CML8_Yos.js";
+import { c as createLucideIcon, u as useAppStore, r as reactExports, j as jsxRuntimeExports, C as CalendarCheck, S as Scissors } from "./index-C28LwCdI.js";
+import { A as AppointmentModal } from "./AppointmentModal-CaVWxjLw.js";
+import { f as formatDate, g as getTodayString, a as formatTime12, b as formatDuration, c as formatPrice } from "./utils-VpTwBoiu.js";
+import { u as useShallow } from "./shallow-B4tNjq6h.js";
+import { C as Clock } from "./clock-gV4h8ztK.js";
+import { P as Plus } from "./triangle-alert-uzvYPtP7.js";
 /**
  * @license lucide-react v0.511.0 - ISC
  *

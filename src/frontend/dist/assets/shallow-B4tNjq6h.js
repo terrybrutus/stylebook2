@@ -1,4 +1,4 @@
-import { h as React } from "./index-BUnhKn-w.js";
+import { h as React } from "./index-C28LwCdI.js";
 const isIterable = (obj) => Symbol.iterator in obj;
 const hasIterableEntries = (value) => (
   // HACK: avoid checking entries type
