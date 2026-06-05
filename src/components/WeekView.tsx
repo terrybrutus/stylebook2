@@ -1,5 +1,6 @@
 import { useRef, useEffect, useState } from 'react';
 import { useStore } from '../store';
+import { useShallow } from 'zustand/react/shallow';
 import type { Appointment } from '../types';
 import { formatTime, dateStringFromDate, addDays, weekStart, DAY_NAMES } from '../utils';
 
@@ -10,11 +11,11 @@ interface Props {
 }
 
 export default function WeekView({ weekDate, onSlotClick, onAppointmentClick }: Props) {
-  const { appointments, settings, services } = useStore((s) => ({
+  const { appointments, settings, services } = useStore(useShallow((s) => ({
     appointments: s.appointments,
     settings: s.settings,
     services: s.services,
-  }));
+  })));
 
   const containerRef = useRef<HTMLDivElement>(null);
 

@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
 import { useStore } from '../store';
+import { useShallow } from 'zustand/react/shallow';
 import type { Service, ServicePhase } from '../types';
 import { generateId } from '../utils';
 
@@ -262,12 +263,12 @@ function PhaseRow({ phase, idx, onChange, onRemove, canRemove }: PhaseRowProps) 
 }
 
 export default function ServicesView() {
-  const { services, addService, updateService, deleteService } = useStore((s) => ({
+  const { services, addService, updateService, deleteService } = useStore(useShallow((s) => ({
     services: s.services,
     addService: s.addService,
     updateService: s.updateService,
     deleteService: s.deleteService,
-  }));
+  })));
 
   const [showModal, setShowModal] = useState(false);
   const [editService, setEditService] = useState<Service | undefined>(undefined);

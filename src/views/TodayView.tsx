@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useStore } from '../store';
+import { useShallow } from 'zustand/react/shallow';
 import AppointmentModal from '../components/AppointmentModal';
 import type { Appointment } from '../types';
 import { formatTime, formatDuration, todayString, MONTH_NAMES } from '../utils';
@@ -11,10 +12,10 @@ interface Props {
 }
 
 export default function TodayView({ onNavigate }: Props) {
-  const { appointments, services } = useStore((s) => ({
+  const { appointments, services } = useStore(useShallow((s) => ({
     appointments: s.appointments,
     services: s.services,
-  }));
+  })));
   const [showModal, setShowModal] = useState(false);
   const [editAppt, setEditAppt] = useState<Appointment | undefined>(undefined);
 

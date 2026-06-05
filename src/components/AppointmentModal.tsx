@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback } from 'react';
 import { useStore } from '../store';
+import { useShallow } from 'zustand/react/shallow';
 import type { Appointment, AppointmentPhase, Service } from '../types';
 import { generateId, todayString } from '../utils';
 
@@ -29,13 +30,13 @@ function buildPhasesFromService(svc: Service, startTime: number): AppointmentPha
 
 export default function AppointmentModal({ appointment, initialDate, initialTime, onClose }: Props) {
   const { services, appointments, addAppointment, updateAppointment, deleteAppointment } = useStore(
-    (s) => ({
+    useShallow((s) => ({
       services: s.services,
       appointments: s.appointments,
       addAppointment: s.addAppointment,
       updateAppointment: s.updateAppointment,
       deleteAppointment: s.deleteAppointment,
-    })
+    }))
   );
 
   const isEdit = !!appointment;

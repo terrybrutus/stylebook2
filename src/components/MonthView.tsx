@@ -1,4 +1,5 @@
 import { useStore } from '../store';
+import { useShallow } from 'zustand/react/shallow';
 import type { Appointment } from '../types';
 import { dateStringFromDate, addDays, weekStart, MONTH_NAMES } from '../utils';
 
@@ -9,11 +10,11 @@ interface Props {
 }
 
 export default function MonthView({ month, onDayClick, onAppointmentClick }: Props) {
-  const { appointments, settings, services } = useStore((s) => ({
+  const { appointments, settings, services } = useStore(useShallow((s) => ({
     appointments: s.appointments,
     settings: s.settings,
     services: s.services,
-  }));
+  })));
 
   const now = new Date();
   const todayStr = dateStringFromDate(now);

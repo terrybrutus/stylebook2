@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useStore } from '../store';
+import { useShallow } from 'zustand/react/shallow';
 import type { Appointment } from '../types';
 import { formatTime, formatDuration } from '../utils';
 import AppointmentModal from '../components/AppointmentModal';
@@ -13,10 +14,10 @@ interface ClientInfo {
 }
 
 export default function ClientsView() {
-  const { appointments, services } = useStore((s) => ({
+  const { appointments, services } = useStore(useShallow((s) => ({
     appointments: s.appointments,
     services: s.services,
-  }));
+  })));
   const [search, setSearch] = useState('');
   const [selectedClient, setSelectedClient] = useState<string | null>(null);
   const [editAppt, setEditAppt] = useState<Appointment | undefined>(undefined);

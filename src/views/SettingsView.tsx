@@ -1,11 +1,12 @@
 import { useStore } from '../store';
+import { useShallow } from 'zustand/react/shallow';
 import { formatTime } from '../utils';
 
 export default function SettingsView() {
-  const { settings, updateSettings } = useStore((s) => ({
+  const { settings, updateSettings } = useStore(useShallow((s) => ({
     settings: s.settings,
     updateSettings: s.updateSettings,
-  }));
+  })));
 
   // All hour options for a full range
   const allHours = Array.from({ length: 48 }, (_, i) => ({
