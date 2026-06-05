@@ -9,7 +9,9 @@ import {
   Users,
 } from "lucide-react";
 import { useTheme } from "next-themes";
-import type { ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
+import { useShallow } from "zustand/shallow";
+import { useAppStore } from "../store/useAppStore";
 
 interface NavItem {
   label: string;
@@ -39,6 +41,32 @@ export function Layout({ children }: LayoutProps) {
   const routerState = useRouterState();
   const pathname = routerState.location.pathname;
   const { theme, setTheme } = useTheme();
+
+  const { undo, redo, canUndo, canRedo } = useAppStore(
+    useShallow((s) => ({
+      undo: s.undo,
+      redo: s.redo,
+      canUndo: s.appointmentHistory.length > 0,
+      canRedo: s.appointmentFuture.length > 0,
+    })),
+  );
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const mod = e.metaKey || e.ctrlKey;
+      if (!mod) return;
+      if (e.key === "z" && !e.shiftKey) {
+        e.preventDefault();
+        undo();
+      }
+      if ((e.key === "z" && e.shiftKey) || e.key === "y") {
+        e.preventDefault();
+        redo();
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [undo, redo]);
 
   function isActive(item: NavItem): boolean {
     if (item.matchPrefix) {
@@ -133,6 +161,32 @@ export function Layout({ children }: LayoutProps) {
           {children}
         </main>
       </div>
+
+      {/* Floating undo/redo pill — mobile, above bottom nav */}
+      {(canUndo || canRedo) && (
+        <div className="md:hidden fixed bottom-20 left-3 z-50 flex gap-1">
+          <button
+            type="button"
+            onClick={undo}
+            disabled={!canUndo}
+            aria-label="Undo"
+            className="w-11 h-11 flex items-center justify-center rounded-full bg-card border border-border shadow transition-opacity"
+            style={{ opacity: canUndo ? 1 : 0.4 }}
+          >
+            ↩
+          </button>
+          <button
+            type="button"
+            onClick={redo}
+            disabled={!canRedo}
+            aria-label="Redo"
+            className="w-11 h-11 flex items-center justify-center rounded-full bg-card border border-border shadow transition-opacity"
+            style={{ opacity: canRedo ? 1 : 0.4 }}
+          >
+            ↪
+          </button>
+        </div>
+      )}
 
       {/* Mobile bottom tab bar */}
       <nav

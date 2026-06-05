@@ -61,9 +61,12 @@ function getPhaseStartMinutes(phase: { startTime: string }): number {
 }
 
 export function DayView({ date, onModalChange }: Props) {
-  const settings = useAppStore(useShallow((s) => s.settings));
-  const appointments = useAppStore(
-    useShallow((s) => s.appointments.filter((a) => a.date === date)),
+  const { settings, appointments, deleteAppointment } = useAppStore(
+    useShallow((s) => ({
+      settings: s.settings,
+      appointments: s.appointments.filter((a) => a.date === date),
+      deleteAppointment: s.deleteAppointment,
+    })),
   );
 
   const startHour = Number(settings.workingHoursStart.split(":")[0]);
@@ -308,11 +311,7 @@ export function DayView({ date, onModalChange }: Props) {
             type="button"
             className="w-full text-left px-4 py-2.5 text-sm text-destructive hover:bg-muted transition-colors"
             onClick={() => {
-              onModalChange({
-                isOpen: true,
-                mode: "edit",
-                appointment: contextMenu.appointment,
-              });
+              deleteAppointment(contextMenu.appointment.id);
               setContextMenu(null);
             }}
             data-ocid="appointment.delete_button"

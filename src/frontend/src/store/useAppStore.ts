@@ -17,6 +17,12 @@ interface AppState {
   // Loading flags
   loading: LoadingFlags;
 
+  // Undo/redo history (not persisted)
+  appointmentHistory: Appointment[][];
+  appointmentFuture: Appointment[][];
+  undo: () => void;
+  redo: () => void;
+
   // Actions — Appointments
   setAppointments: (appointments: Appointment[]) => void;
   addAppointment: (appointment: Appointment) => void;
@@ -52,23 +58,69 @@ export const useAppStore = create<AppState>()(
       services: [],
       settings: DEFAULT_SETTINGS,
       loading: { appointments: false, services: false, settings: false },
+      appointmentHistory: [],
+      appointmentFuture: [],
 
       // Appointment actions
-      setAppointments: (appointments) => set({ appointments }),
+      setAppointments: (appointments) =>
+        set({ appointments, appointmentHistory: [], appointmentFuture: [] }),
       addAppointment: (appointment) =>
         set((state) => ({
+          appointmentHistory: [
+            ...state.appointmentHistory.slice(-20),
+            state.appointments,
+          ],
+          appointmentFuture: [],
           appointments: [...state.appointments, appointment],
         })),
       updateAppointment: (appointment) =>
         set((state) => ({
+          appointmentHistory: [
+            ...state.appointmentHistory.slice(-20),
+            state.appointments,
+          ],
+          appointmentFuture: [],
           appointments: state.appointments.map((a) =>
             a.id === appointment.id ? appointment : a,
           ),
         })),
       deleteAppointment: (id) =>
         set((state) => ({
+          appointmentHistory: [
+            ...state.appointmentHistory.slice(-20),
+            state.appointments,
+          ],
+          appointmentFuture: [],
           appointments: state.appointments.filter((a) => a.id !== id),
         })),
+
+      undo: () =>
+        set((state) => {
+          if (state.appointmentHistory.length === 0) return state;
+          const prev =
+            state.appointmentHistory[state.appointmentHistory.length - 1];
+          return {
+            appointmentHistory: state.appointmentHistory.slice(0, -1),
+            appointmentFuture: [
+              state.appointments,
+              ...state.appointmentFuture.slice(0, 19),
+            ],
+            appointments: prev,
+          };
+        }),
+      redo: () =>
+        set((state) => {
+          if (state.appointmentFuture.length === 0) return state;
+          const next = state.appointmentFuture[0];
+          return {
+            appointmentHistory: [
+              ...state.appointmentHistory.slice(-19),
+              state.appointments,
+            ],
+            appointmentFuture: state.appointmentFuture.slice(1),
+            appointments: next,
+          };
+        }),
 
       // Service actions
       setServices: (services) => set({ services }),
