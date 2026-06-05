@@ -215,17 +215,20 @@ export function WeekView({ anchorDate, onModalChange, onDayClick }: Props) {
     label: string;
     color: string;
     phaseIndex: number;
+    leftPct: string;
+    rightPct: string;
+    zIdx: number;
   };
 
   function buildBlocks(dateStr: string): RenderBlock[] {
     const dayAppts = allAppointments.filter((a) => a.date === dateStr);
-    const result: RenderBlock[] = [];
+    const raw: Omit<RenderBlock, 'leftPct' | 'rightPct' | 'zIdx'>[] = [];
     for (const appt of dayAppts) {
       if (appt.phases.length === 0) {
         const apptStartMin = timeStrToMinutes(appt.startTime);
         const topPx = minutesToPx(apptStartMin, startMinutes);
         const heightPx = Math.max(appt.durationMinutes * MIN_PX, 20);
-        result.push({
+        raw.push({
           appt,
           topPx,
           heightPx,
@@ -240,7 +243,7 @@ export function WeekView({ anchorDate, onModalChange, onDayClick }: Props) {
           const topPx = minutesToPx(phaseStartMin, startMinutes);
           const heightPx = Math.max(phase.durationMinutes * MIN_PX, 20);
           const { label, isProcessing } = getBlockLabel(appt, i);
-          result.push({
+          raw.push({
             appt,
             topPx,
             heightPx,
@@ -252,7 +255,26 @@ export function WeekView({ anchorDate, onModalChange, onDayClick }: Props) {
         }
       }
     }
-    return result;
+    // Cascade overlap offsets: sort by topPx, detect overlaps, offset 2nd/3rd
+    raw.sort((a, b) => a.topPx - b.topPx);
+    const overlapOrder: number[] = raw.map(() => 0);
+    for (let i = 0; i < raw.length; i++) {
+      for (let j = i + 1; j < raw.length; j++) {
+        const a = raw[i], b = raw[j];
+        if (b.topPx >= a.topPx + a.heightPx) break;
+        overlapOrder[j] = Math.max(overlapOrder[j], overlapOrder[i] + 1);
+      }
+    }
+    const offsets = ['0%', '20%', '40%'];
+    return raw.map((b, i) => {
+      const order = Math.min(overlapOrder[i], 2);
+      return {
+        ...b,
+        leftPct: offsets[order],
+        rightPct: order > 0 ? '0%' : '0%',
+        zIdx: (b.isProcessing ? 5 : 10) + order,
+      };
+    });
   }
 
   return (
@@ -416,6 +438,8 @@ export function WeekView({ anchorDate, onModalChange, onDayClick }: Props) {
                   <WeekBlock
                     key={`${block.appt.id}-${block.phaseIndex}-${idx}`}
                     block={block}
+                    leftPct={block.leftPct}
+                    zIdx={block.zIdx}
                     onEdit={handleApptClick}
                     onContextMenu={handleContextMenu}
                     onTouchStart={handleTouchStart}
@@ -493,6 +517,8 @@ type WeekBlockProps = {
     label: string;
     color: string;
   };
+  leftPct: string;
+  zIdx: number;
   onEdit: (e: React.MouseEvent, appt: Appointment) => void;
   onContextMenu: (e: React.MouseEvent, appt: Appointment) => void;
   onTouchStart: (e: React.TouchEvent, appt: Appointment) => void;
@@ -501,6 +527,8 @@ type WeekBlockProps = {
 
 function WeekBlock({
   block,
+  leftPct,
+  zIdx,
   onEdit,
   onContextMenu,
   onTouchStart,
@@ -509,8 +537,7 @@ function WeekBlock({
   const { appt, topPx, heightPx, isProcessing, label, color } = block;
   const isShort = heightPx < 50;
 
-  // Processing phases at z-index 5, active/finishing phases at z-index 10
-  const zIndex = isProcessing ? 5 : 10;
+  const zIndex = zIdx;
 
   const bgStyle = isProcessing
     ? {
@@ -525,11 +552,13 @@ function WeekBlock({
   return (
     <button
       type="button"
-      className="absolute left-0.5 right-0.5 rounded border overflow-hidden cursor-pointer select-none text-left"
+      className="absolute right-0.5 rounded border overflow-hidden cursor-pointer select-none text-left"
       style={{
         top: topPx + 1,
         height: Math.max(heightPx - 2, 4),
+        left: `calc(${leftPct} + 2px)`,
         zIndex,
+        borderLeft: leftPct !== '0%' ? `3px solid ${color}` : undefined,
         ...bgStyle,
       }}
       onClick={(e) => {
