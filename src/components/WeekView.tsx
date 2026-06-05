@@ -14,6 +14,30 @@ interface Props {
 const PPM = 2.5;
 const MIN_BLOCK_HEIGHT = 28;
 
+/** Returns groups of overlapping appointments. Two appointments overlap if their time ranges intersect. */
+function groupOverlapping(appts: Appointment[]): Appointment[][] {
+  const sorted = [...appts].sort((a, b) => a.startTime - b.startTime);
+  const groups: Appointment[][] = [];
+  for (const appt of sorted) {
+    const apptEnd = appt.startTime + appt.duration;
+    // Try to find an existing group that overlaps with this appt
+    let placed = false;
+    for (const group of groups) {
+      const overlaps = group.some((g) => {
+        const gEnd = g.startTime + g.duration;
+        return appt.startTime < gEnd && g.startTime < apptEnd;
+      });
+      if (overlaps) {
+        group.push(appt);
+        placed = true;
+        break;
+      }
+    }
+    if (!placed) groups.push([appt]);
+  }
+  return groups;
+}
+
 export default function WeekView({ weekDate, onSlotClick, onAppointmentClick }: Props) {
   const { appointments, settings, services } = useStore(useShallow((s) => ({
     appointments: s.appointments,
@@ -46,6 +70,18 @@ export default function WeekView({ weekDate, onSlotClick, onAppointmentClick }: 
   }, []);
 
   const [mobileOffset, setMobileOffset] = useState(0);
+
+  // Slide animation state
+  const [slideDir, setSlideDir] = useState<'left' | 'right' | null>(null);
+  const [isAnimating, setIsAnimating] = useState(false);
+
+  const handleOffsetChange = (newOffset: number) => {
+    const dir = newOffset > mobileOffset ? 'right' : 'left';
+    setSlideDir(dir);
+    setIsAnimating(true);
+    setMobileOffset(newOffset);
+    setTimeout(() => setIsAnimating(false), 150);
+  };
 
   const wStart = weekStart(weekDate, settings.startWeekOnMonday);
   const allDays = Array.from({ length: 7 }, (_, i) => addDays(wStart, i));
@@ -111,29 +147,55 @@ export default function WeekView({ weekDate, onSlotClick, onAppointmentClick }: 
 
       {/* Mobile prev/next */}
       {isMobilePortrait && (
-        <div className="flex justify-between items-center px-3 py-1 bg-gray-50 dark:bg-brand-mid text-xs flex-shrink-0 border-b border-gray-200 dark:border-brand-mid">
-          <button
-            onClick={() => setMobileOffset((o) => Math.max(0, o - 3))}
-            disabled={mobileOffset <= 0}
-            className="px-3 py-1 rounded bg-brand-teal text-white disabled:opacity-30 font-medium"
-          >
-            ‹ Prev
-          </button>
-          <span className="text-gray-400 dark:text-gray-400">
-            {formatTime(0)} — showing {visibleDays[0] ? visibleDays[0].getDate() : ''}–{visibleDays[2] ? visibleDays[2].getDate() : ''}
-          </span>
-          <button
-            onClick={() => setMobileOffset((o) => Math.min(4, o + 3))}
-            disabled={mobileOffset + 3 >= 7}
-            className="px-3 py-1 rounded bg-brand-teal text-white disabled:opacity-30 font-medium"
-          >
-            Next ›
-          </button>
-        </div>
+        <>
+          <div className="flex justify-between items-center px-3 py-1 bg-gray-50 dark:bg-brand-mid text-xs flex-shrink-0 border-b border-gray-200 dark:border-brand-mid">
+            <button
+              onClick={() => handleOffsetChange(Math.max(0, mobileOffset - 3))}
+              disabled={mobileOffset <= 0}
+              className="px-3 py-1 rounded bg-brand-teal text-white disabled:opacity-30 font-medium"
+            >
+              ‹ Prev
+            </button>
+            <span className="text-gray-400 dark:text-gray-400">
+              {visibleDays[0] ? visibleDays[0].getDate() : ''}–{visibleDays[2] ? visibleDays[2].getDate() : ''}
+            </span>
+            <button
+              onClick={() => handleOffsetChange(Math.min(4, mobileOffset + 3))}
+              disabled={mobileOffset + 3 >= 7}
+              className="px-3 py-1 rounded bg-brand-teal text-white disabled:opacity-30 font-medium"
+            >
+              Next ›
+            </button>
+          </div>
+          {/* Dot indicator — 7 dots, visible 3 are filled */}
+          <div className="flex justify-center gap-1.5 py-1 bg-gray-50 dark:bg-brand-mid flex-shrink-0">
+            {allDays.map((d, i) => {
+              const isVisible = i >= mobileOffset && i < mobileOffset + 3;
+              const ds = dateStringFromDate(d);
+              const isToday = ds === todayStr;
+              return (
+                <div
+                  key={i}
+                  className={`rounded-full transition-all ${
+                    isVisible
+                      ? isToday
+                        ? 'w-2.5 h-2.5 bg-brand-teal'
+                        : 'w-2 h-2 bg-gray-500 dark:bg-gray-300'
+                      : 'w-2 h-2 border border-gray-400 dark:border-gray-500'
+                  }`}
+                />
+              );
+            })}
+          </div>
+        </>
       )}
 
       {/* Scrollable grid */}
-      <div ref={containerRef} className="flex-1 overflow-y-auto overflow-x-hidden">
+      <div
+        ref={containerRef}
+        className="flex-1 overflow-y-auto overflow-x-hidden calendar-grid"
+        style={{ WebkitOverflowScrolling: 'touch' as React.CSSProperties['WebkitOverflowScrolling'], touchAction: 'pan-y', overscrollBehavior: 'none' }}
+      >
         <div className="flex relative" style={{ height: gridHeight + 32 }}>
 
           {/* Time label column */}
@@ -149,56 +211,84 @@ export default function WeekView({ weekDate, onSlotClick, onAppointmentClick }: 
             ))}
           </div>
 
-          {/* Day columns */}
-          {visibleDays.map((d) => {
-            const ds = dateStringFromDate(d);
-            const isToday = ds === todayStr;
-            const colAppts = appointments.filter((a) => a.date === ds);
+          {/* Day columns with slide animation */}
+          <div
+            className="flex flex-1"
+            style={{
+              transform: isAnimating
+                ? `translateX(${slideDir === 'right' ? '20px' : '-20px'})`
+                : 'translateX(0)',
+              transition: isAnimating ? 'none' : 'transform 150ms ease-out',
+              opacity: isAnimating ? 0.7 : 1,
+            }}
+          >
+            {visibleDays.map((d) => {
+              const ds = dateStringFromDate(d);
+              const isToday = ds === todayStr;
+              const colAppts = appointments.filter((a) => a.date === ds);
 
-            return (
-              <div
-                key={ds}
-                className="flex-1 relative border-l border-gray-200 dark:border-gray-700"
-                style={{ height: gridHeight }}
-                onClick={(e) => {
-                  const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
-                  const y = e.clientY - rect.top;
-                  const mins = Math.round((y / PPM + startMin) / 15) * 15;
-                  onSlotClick(ds, mins);
-                }}
-              >
-                {/* Grid lines */}
-                {hourLines.map(({ top, isHour }, i) => (
-                  <div
-                    key={i}
-                    className={`absolute left-0 right-0 pointer-events-none ${
-                      isHour
-                        ? 'border-t border-gray-200 dark:border-gray-700'
-                        : 'border-t border-gray-100 dark:border-gray-800'
-                    }`}
-                    style={{ top }}
-                  />
-                ))}
+              // Group single-phase (non-multiphase) appointments by overlap
+              const singleAppts = colAppts.filter((a) => !a.phases || a.phases.length === 0);
+              const multiAppts = colAppts.filter((a) => a.phases && a.phases.length > 0);
+              const overlapGroups = groupOverlapping(singleAppts);
 
-                {/* Current time indicator — today only */}
-                {isToday && currentMinutes >= startMin && currentMinutes <= endMin && (
-                  <div
-                    className="absolute left-0 right-0 z-20 pointer-events-none flex items-center"
-                    style={{ top: currentTop }}
-                  >
-                    <div className="w-2 h-2 rounded-full bg-brand-teal flex-shrink-0 -ml-1" />
-                    <div className="flex-1 h-0.5 bg-brand-teal" />
-                  </div>
-                )}
+              // Build a map from appt id to layout info
+              const layoutMap: Record<string, { left: string; right: string; zIndex: number }> = {};
+              for (const group of overlapGroups) {
+                group.forEach((appt, idx) => {
+                  if (group.length === 1) {
+                    layoutMap[appt.id] = { left: '2px', right: '2px', zIndex: 10 };
+                  } else if (idx === 0) {
+                    layoutMap[appt.id] = { left: '2px', right: '2px', zIndex: 10 };
+                  } else if (idx === 1) {
+                    layoutMap[appt.id] = { left: '25%', right: '2px', zIndex: 11 };
+                  } else {
+                    layoutMap[appt.id] = { left: '45%', right: '2px', zIndex: 12 };
+                  }
+                });
+              }
 
-                {/* Appointment blocks */}
-                {colAppts.map((appt) => {
-                  const svc = services.find((s) => s.id === appt.serviceId);
-                  const color = svc?.color ?? '#00ADB5';
+              return (
+                <div
+                  key={ds}
+                  className="flex-1 relative border-l border-gray-200 dark:border-gray-700"
+                  style={{ height: gridHeight }}
+                  onClick={(e) => {
+                    const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
+                    const y = e.clientY - rect.top;
+                    const mins = Math.round((y / PPM + startMin) / 15) * 15;
+                    onSlotClick(ds, mins);
+                  }}
+                >
+                  {/* Grid lines */}
+                  {hourLines.map(({ top, isHour }, i) => (
+                    <div
+                      key={i}
+                      className={`absolute left-0 right-0 pointer-events-none ${
+                        isHour
+                          ? 'border-t border-gray-200 dark:border-gray-700'
+                          : 'border-t border-gray-100 dark:border-gray-800'
+                      }`}
+                      style={{ top }}
+                    />
+                  ))}
 
-                  // Multiphase: render each phase as its own block
-                  if (appt.phases && appt.phases.length > 0) {
-                    return appt.phases.map((ph) => {
+                  {/* Current time indicator — today only */}
+                  {isToday && currentMinutes >= startMin && currentMinutes <= endMin && (
+                    <div
+                      className="absolute left-0 right-0 z-20 pointer-events-none flex items-center"
+                      style={{ top: currentTop }}
+                    >
+                      <div className="w-2 h-2 rounded-full bg-brand-teal flex-shrink-0 -ml-1" />
+                      <div className="flex-1 h-0.5 bg-brand-teal" />
+                    </div>
+                  )}
+
+                  {/* Multiphase appointment blocks */}
+                  {multiAppts.map((appt) => {
+                    const svc = services.find((s) => s.id === appt.serviceId);
+                    const color = svc?.color ?? '#00ADB5';
+                    return appt.phases!.map((ph) => {
                       const top = (ph.startTime - startMin) * PPM;
                       const height = Math.max(ph.duration * PPM, MIN_BLOCK_HEIGHT);
                       const isProcessing = ph.type === 'processing';
@@ -206,11 +296,12 @@ export default function WeekView({ weekDate, onSlotClick, onAppointmentClick }: 
                       return (
                         <div
                           key={`${appt.id}-${ph.phaseId}`}
-                          className="absolute left-0.5 right-0.5 rounded cursor-pointer overflow-hidden"
+                          className="absolute rounded cursor-pointer overflow-hidden"
                           style={{
                             top,
                             height,
-                            // Processing blocks sit below any active appointment in the same slot
+                            left: '2px',
+                            right: '2px',
                             zIndex: isProcessing ? 5 : 10,
                             backgroundColor: color,
                             opacity: isProcessing ? 0.45 : 1,
@@ -226,7 +317,7 @@ export default function WeekView({ weekDate, onSlotClick, onAppointmentClick }: 
                           <div className="px-1.5 py-1 text-white overflow-hidden h-full flex flex-col justify-start">
                             <div
                               className="font-bold leading-tight truncate"
-                              style={{ fontSize: 11 }}
+                              style={{ fontSize: 12 }}
                             >
                               {appt.clientName}
                             </div>
@@ -234,7 +325,7 @@ export default function WeekView({ weekDate, onSlotClick, onAppointmentClick }: 
                               <div
                                 className="leading-tight opacity-90 mt-0.5"
                                 style={{
-                                  fontSize: 10,
+                                  fontSize: 11,
                                   wordBreak: 'break-word',
                                   overflowWrap: 'break-word',
                                 }}
@@ -246,53 +337,68 @@ export default function WeekView({ weekDate, onSlotClick, onAppointmentClick }: 
                         </div>
                       );
                     });
-                  }
+                  })}
 
-                  // Single-phase block
-                  const top = (appt.startTime - startMin) * PPM;
-                  const height = Math.max(appt.duration * PPM, MIN_BLOCK_HEIGHT);
+                  {/* Single-phase blocks with overlap cascade */}
+                  {singleAppts.map((appt) => {
+                    const svc = services.find((s) => s.id === appt.serviceId);
+                    const color = svc?.color ?? '#00ADB5';
+                    const layout = layoutMap[appt.id] ?? { left: '2px', right: '2px', zIndex: 10 };
 
-                  return (
-                    <div
-                      key={appt.id}
-                      className="absolute left-0.5 right-0.5 rounded cursor-pointer overflow-hidden"
-                      style={{ top, height, zIndex: 10, backgroundColor: color }}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onAppointmentClick(appt);
-                      }}
-                    >
-                      <div className="px-1.5 py-1 text-white overflow-hidden h-full flex flex-col justify-start">
-                        <div
-                          className="font-bold leading-tight truncate"
-                          style={{ fontSize: 11 }}
-                        >
-                          {appt.clientName}
-                        </div>
-                        {height >= 42 && (
+                    const top = (appt.startTime - startMin) * PPM;
+                    const height = Math.max(appt.duration * PPM, MIN_BLOCK_HEIGHT);
+                    const isOffset = layout.left !== '2px';
+
+                    return (
+                      <div
+                        key={appt.id}
+                        className="absolute rounded cursor-pointer overflow-hidden"
+                        style={{
+                          top,
+                          height,
+                          left: layout.left,
+                          right: layout.right,
+                          zIndex: layout.zIndex,
+                          backgroundColor: color,
+                          borderLeft: isOffset ? `3px solid ${color}` : undefined,
+                        }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onAppointmentClick(appt);
+                        }}
+                      >
+                        <div className="px-1.5 py-1 text-white overflow-hidden h-full flex flex-col justify-start">
                           <div
-                            className="leading-tight opacity-90 mt-0.5"
-                            style={{
-                              fontSize: 10,
-                              wordBreak: 'break-word',
-                              overflowWrap: 'break-word',
-                            }}
+                            className="font-bold leading-tight truncate"
+                            style={{ fontSize: 12 }}
                           >
-                            {appt.serviceName}
+                            {appt.clientName}
                           </div>
-                        )}
-                        {height >= 62 && (
-                          <div className="opacity-75 mt-0.5" style={{ fontSize: 10 }}>
-                            {appt.duration}m · ${appt.price}
-                          </div>
-                        )}
+                          {height >= 42 && (
+                            <div
+                              className="leading-tight opacity-90 mt-0.5"
+                              style={{
+                                fontSize: 11,
+                                wordBreak: 'break-word',
+                                overflowWrap: 'break-word',
+                              }}
+                            >
+                              {appt.serviceName}
+                            </div>
+                          )}
+                          {height >= 62 && (
+                            <div className="opacity-75 mt-0.5" style={{ fontSize: 10 }}>
+                              {appt.duration}m · ${appt.price}
+                            </div>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
-              </div>
-            );
-          })}
+                    );
+                  })}
+                </div>
+              );
+            })}
+          </div>
         </div>
       </div>
     </div>

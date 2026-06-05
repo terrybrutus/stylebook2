@@ -5,6 +5,22 @@ import AppointmentModal from '../components/AppointmentModal';
 import type { Appointment } from '../types';
 import { formatTime, formatDuration, todayString, MONTH_NAMES } from '../utils';
 
+function findOverlappingPairs(appts: Appointment[]): Array<[Appointment, Appointment]> {
+  const pairs: Array<[Appointment, Appointment]> = [];
+  for (let i = 0; i < appts.length; i++) {
+    for (let j = i + 1; j < appts.length; j++) {
+      const a = appts[i];
+      const b = appts[j];
+      const aEnd = a.startTime + a.duration;
+      const bEnd = b.startTime + b.duration;
+      if (a.startTime < bEnd && b.startTime < aEnd) {
+        pairs.push([a, b]);
+      }
+    }
+  }
+  return pairs;
+}
+
 type Tab = 'today' | 'calendar' | 'clients' | 'services' | 'settings';
 
 interface Props {
@@ -30,6 +46,7 @@ export default function TodayView({ onNavigate }: Props) {
   const dateLabel = `${dayName}, ${monthName} ${now.getDate()}, ${now.getFullYear()}`;
 
   const totalRevenue = todayAppts.reduce((sum, a) => sum + a.price, 0);
+  const conflictPairs = findOverlappingPairs(todayAppts);
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -129,6 +146,37 @@ export default function TodayView({ onNavigate }: Props) {
           })
         )}
       </div>
+
+      {/* Scheduling Conflicts */}
+      {conflictPairs.length > 0 && (
+        <div className="px-4 pb-2 flex-shrink-0">
+          <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-3">
+            <div className="text-sm font-bold text-red-700 dark:text-red-400 mb-2">
+              Scheduling Conflicts ({conflictPairs.length})
+            </div>
+            <div className="space-y-1.5">
+              {conflictPairs.map(([a, b], i) => (
+                <div key={i} className="flex gap-2 text-xs text-red-600 dark:text-red-400">
+                  <button
+                    onClick={() => { setEditAppt(a); setShowModal(true); }}
+                    className="font-semibold underline hover:text-red-800 dark:hover:text-red-200"
+                  >
+                    {a.clientName} ({a.serviceName})
+                  </button>
+                  <span>overlaps</span>
+                  <button
+                    onClick={() => { setEditAppt(b); setShowModal(true); }}
+                    className="font-semibold underline hover:text-red-800 dark:hover:text-red-200"
+                  >
+                    {b.clientName} ({b.serviceName})
+                  </button>
+                  <span className="text-gray-500">at {formatTime(a.startTime)}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {showModal && (
         <AppointmentModal

@@ -10,6 +10,29 @@ interface Props {
   onAppointmentClick: (appt: Appointment) => void;
 }
 
+/** Returns groups of overlapping appointments. */
+function groupOverlapping(appts: Appointment[]): Appointment[][] {
+  const sorted = [...appts].sort((a, b) => a.startTime - b.startTime);
+  const groups: Appointment[][] = [];
+  for (const appt of sorted) {
+    const apptEnd = appt.startTime + appt.duration;
+    let placed = false;
+    for (const group of groups) {
+      const overlaps = group.some((g) => {
+        const gEnd = g.startTime + g.duration;
+        return appt.startTime < gEnd && g.startTime < apptEnd;
+      });
+      if (overlaps) {
+        group.push(appt);
+        placed = true;
+        break;
+      }
+    }
+    if (!placed) groups.push([appt]);
+  }
+  return groups;
+}
+
 export default function DayView({ date, onSlotClick, onAppointmentClick }: Props) {
   const { appointments, settings, services } = useStore(useShallow((s) => ({
     appointments: s.appointments,
@@ -54,8 +77,31 @@ export default function DayView({ date, onSlotClick, onAppointmentClick }: Props
     timeLabels.push({ mins, top, label: formatTime(mins) });
   }
 
+  // Build overlap layout for single-phase appointments
+  const singleAppts = dayAppts.filter((a) => !a.phases || a.phases.length === 0);
+  const multiAppts = dayAppts.filter((a) => a.phases && a.phases.length > 0);
+  const overlapGroups = groupOverlapping(singleAppts);
+  const layoutMap: Record<string, { left: string; right: string; zIndex: number }> = {};
+  for (const group of overlapGroups) {
+    group.forEach((appt, idx) => {
+      if (group.length === 1) {
+        layoutMap[appt.id] = { left: '1px', right: '1px', zIndex: 10 };
+      } else if (idx === 0) {
+        layoutMap[appt.id] = { left: '1px', right: '1px', zIndex: 10 };
+      } else if (idx === 1) {
+        layoutMap[appt.id] = { left: '25%', right: '1px', zIndex: 11 };
+      } else {
+        layoutMap[appt.id] = { left: '45%', right: '1px', zIndex: 12 };
+      }
+    });
+  }
+
   return (
-    <div ref={containerRef} className="flex-1 overflow-y-auto overflow-x-hidden" style={{ height: '100%' }}>
+    <div
+      ref={containerRef}
+      className="flex-1 overflow-y-auto overflow-x-hidden calendar-grid"
+      style={{ height: '100%', WebkitOverflowScrolling: 'touch' as React.CSSProperties['WebkitOverflowScrolling'], touchAction: 'pan-y', overscrollBehavior: 'none' }}
+    >
       <div className="flex" style={{ minHeight: gridHeight + 40 }}>
         {/* Time labels */}
         <div className="w-16 flex-shrink-0 relative" style={{ height: gridHeight }}>
@@ -117,56 +163,70 @@ export default function DayView({ date, onSlotClick, onAppointmentClick }: Props
             </div>
           )}
 
-          {/* Appointment blocks */}
-          {dayAppts.map((appt) => {
+          {/* Multiphase appointment blocks */}
+          {multiAppts.map((appt) => {
             const svc = services.find((s) => s.id === appt.serviceId);
             const color = svc?.color ?? '#00ADB5';
-
-            if (appt.phases && appt.phases.length > 0) {
-              return appt.phases.map((ph) => {
-                const top = (ph.startTime - settings.workingHoursStart) * pixelsPerMinute;
-                const height = Math.max(ph.duration * pixelsPerMinute, 28);
-                const isProcessing = ph.type === 'processing';
-                return (
-                  <div
-                    key={`${appt.id}-${ph.phaseId}`}
-                    className="absolute left-1 right-1 rounded overflow-hidden cursor-pointer z-10"
-                    style={{
-                      top,
-                      height,
-                      backgroundColor: color,
-                      opacity: isProcessing ? 0.55 : 1,
-                      backgroundImage: isProcessing
-                        ? 'repeating-linear-gradient(45deg, rgba(255,255,255,0.15) 0, rgba(255,255,255,0.15) 4px, transparent 4px, transparent 12px)'
-                        : undefined,
-                    }}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onAppointmentClick(appt);
-                    }}
-                  >
-                    <div className="px-1 py-0.5 text-white text-xs overflow-hidden">
-                      {height >= 30 ? (
-                        <>
-                          <div className="font-bold truncate">{appt.clientName}</div>
-                          <div className="opacity-80 text-xs">{ph.name}</div>
-                        </>
-                      ) : (
-                        <div className="font-bold truncate text-xs">{appt.clientName}</div>
-                      )}
-                    </div>
+            return appt.phases!.map((ph) => {
+              const top = (ph.startTime - settings.workingHoursStart) * pixelsPerMinute;
+              const height = Math.max(ph.duration * pixelsPerMinute, 28);
+              const isProcessing = ph.type === 'processing';
+              return (
+                <div
+                  key={`${appt.id}-${ph.phaseId}`}
+                  className="absolute left-1 right-1 rounded overflow-hidden cursor-pointer z-10"
+                  style={{
+                    top,
+                    height,
+                    backgroundColor: color,
+                    opacity: isProcessing ? 0.55 : 1,
+                    backgroundImage: isProcessing
+                      ? 'repeating-linear-gradient(45deg, rgba(255,255,255,0.15) 0, rgba(255,255,255,0.15) 4px, transparent 4px, transparent 12px)'
+                      : undefined,
+                  }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onAppointmentClick(appt);
+                  }}
+                >
+                  <div className="px-1 py-0.5 text-white text-xs overflow-hidden">
+                    {height >= 30 ? (
+                      <>
+                        <div className="font-bold truncate" style={{ fontSize: 12 }}>{appt.clientName}</div>
+                        <div className="opacity-80" style={{ fontSize: 11 }}>{ph.name}</div>
+                      </>
+                    ) : (
+                      <div className="font-bold truncate" style={{ fontSize: 12 }}>{appt.clientName}</div>
+                    )}
                   </div>
-                );
-              });
-            }
+                </div>
+              );
+            });
+          })}
+
+          {/* Single-phase blocks with overlap cascade */}
+          {singleAppts.map((appt) => {
+            const svc = services.find((s) => s.id === appt.serviceId);
+            const color = svc?.color ?? '#00ADB5';
+            const layout = layoutMap[appt.id] ?? { left: '1px', right: '1px', zIndex: 10 };
 
             const top = (appt.startTime - settings.workingHoursStart) * pixelsPerMinute;
             const height = Math.max(appt.duration * pixelsPerMinute, 28);
+            const isOffset = layout.left !== '1px';
+
             return (
               <div
                 key={appt.id}
-                className="absolute left-1 right-1 rounded overflow-hidden cursor-pointer z-10"
-                style={{ top, height, backgroundColor: color }}
+                className="absolute rounded overflow-hidden cursor-pointer"
+                style={{
+                  top,
+                  height,
+                  left: layout.left,
+                  right: layout.right,
+                  zIndex: layout.zIndex,
+                  backgroundColor: color,
+                  borderLeft: isOffset ? `3px solid ${color}` : undefined,
+                }}
                 onClick={(e) => {
                   e.stopPropagation();
                   onAppointmentClick(appt);
@@ -175,16 +235,16 @@ export default function DayView({ date, onSlotClick, onAppointmentClick }: Props
                 <div className="px-1 py-0.5 text-white overflow-hidden">
                   {height >= 30 ? (
                     <>
-                      <div className="font-bold text-xs truncate">{appt.clientName}</div>
-                      <div className="text-xs opacity-80" style={{ wordBreak: 'break-word', overflowWrap: 'break-word' }}>
+                      <div className="font-bold truncate" style={{ fontSize: 12 }}>{appt.clientName}</div>
+                      <div className="opacity-80" style={{ fontSize: 11, wordBreak: 'break-word', overflowWrap: 'break-word' }}>
                         {appt.serviceName}
                       </div>
                       {height >= 50 && (
-                        <div className="text-xs opacity-70">{appt.duration}m · ${appt.price}</div>
+                        <div className="opacity-70" style={{ fontSize: 10 }}>{appt.duration}m · ${appt.price}</div>
                       )}
                     </>
                   ) : (
-                    <div className="font-bold text-xs truncate">{appt.clientName}</div>
+                    <div className="font-bold truncate" style={{ fontSize: 12 }}>{appt.clientName}</div>
                   )}
                 </div>
               </div>
