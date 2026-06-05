@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useShallow } from "zustand/shallow";
 import {
   dateToString,
   durationToPixels,
@@ -59,8 +60,8 @@ export function WeekView({
   onModalChange,
   onDayClick: _onDayClick,
 }: Props) {
-  const settings = useAppStore((s) => s.settings);
-  const allAppointments = useAppStore((s) => s.appointments);
+  const settings = useAppStore(useShallow((s) => s.settings));
+  const allAppointments = useAppStore(useShallow((s) => s.appointments));
 
   const startHour = Number(settings.workingHoursStart.split(":")[0]);
   const endHour = Number(settings.workingHoursEnd.split(":")[0]);

@@ -1,5 +1,6 @@
 import { Calendar, Clock, Moon, Palette, Sun } from "lucide-react";
 import { useTheme } from "next-themes";
+import { useShallow } from "zustand/shallow";
 import * as api from "../lib/api";
 import { useAppStore } from "../store/useAppStore";
 
@@ -15,7 +16,7 @@ function formatTime12h(time: string): string {
 }
 
 export default function Settings() {
-  const settings = useAppStore((s) => s.settings);
+  const settings = useAppStore(useShallow((s) => s.settings));
   const updateSettings = useAppStore((s) => s.updateSettings);
   const { setTheme } = useTheme();
 

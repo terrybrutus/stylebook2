@@ -1,6 +1,7 @@
-import { c as createLucideIcon, u as useAppStore, r as reactExports, i as updateService, k as createService, j as jsxRuntimeExports, l as deleteService, S as Scissors } from "./index-BXnX58Ps.js";
-import { X, b as formatDuration, c as formatPrice } from "./utils-C78N2dWx.js";
-import { P as Plus, T as TriangleAlert } from "./triangle-alert-BDl2oy9M.js";
+import { c as createLucideIcon, u as useAppStore, r as reactExports, i as updateService, k as createService, j as jsxRuntimeExports, l as deleteService, S as Scissors } from "./index-BUnhKn-w.js";
+import { X, b as formatDuration, c as formatPrice } from "./utils-OLsRQTl3.js";
+import { P as Plus, T as TriangleAlert } from "./triangle-alert-CML8_Yos.js";
+import { u as useShallow } from "./shallow-DW0QPtHQ.js";
 /**
  * @license lucide-react v0.511.0 - ISC
  *
@@ -642,7 +643,7 @@ function ServiceModal({ open, service, onClose }) {
 }
 function Services() {
   var _a;
-  const services = useAppStore((s) => s.services);
+  const services = useAppStore(useShallow((s) => s.services));
   const deleteServiceStore = useAppStore((s) => s.deleteService);
   const [modalOpen, setModalOpen] = reactExports.useState(false);
   const [editingService, setEditingService] = reactExports.useState(null);

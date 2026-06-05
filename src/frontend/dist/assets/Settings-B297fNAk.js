@@ -1,6 +1,7 @@
-import { c as createLucideIcon, u as useAppStore, z, j as jsxRuntimeExports, M as Moon, m as Sun, n as updateSettings } from "./index-BXnX58Ps.js";
-import { C as Calendar } from "./calendar-BgtafcY6.js";
-import { C as Clock } from "./clock-DVCwDNUh.js";
+import { c as createLucideIcon, u as useAppStore, z, j as jsxRuntimeExports, M as Moon, m as Sun, n as updateSettings } from "./index-BUnhKn-w.js";
+import { u as useShallow } from "./shallow-DW0QPtHQ.js";
+import { C as Calendar } from "./calendar-Q7rp3eKK.js";
+import { C as Clock } from "./clock-DVuaqdnk.js";
 /**
  * @license lucide-react v0.511.0 - ISC
  *
@@ -31,7 +32,7 @@ function formatTime12h(time) {
   return `${h12}:${m} ${suffix}`;
 }
 function Settings() {
-  const settings = useAppStore((s) => s.settings);
+  const settings = useAppStore(useShallow((s) => s.settings));
   const updateSettings$1 = useAppStore((s) => s.updateSettings);
   const { setTheme } = z();
   async function toggleBool(key) {

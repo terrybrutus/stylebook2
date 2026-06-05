@@ -1,3 +1,4 @@
+import { useShallow } from "zustand/shallow";
 import { dateToString, getMonthGrid, hexToRgba } from "../../lib/utils";
 import { useAppStore } from "../../store/useAppStore";
 import type { AppointmentModalState } from "../../types";
@@ -13,8 +14,8 @@ const DAY_NAMES_MON = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const DAY_NAMES_SUN = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 export function MonthView({ year, month, onDayClick, onModalChange }: Props) {
-  const settings = useAppStore((s) => s.settings);
-  const appointments = useAppStore((s) => s.appointments);
+  const settings = useAppStore(useShallow((s) => s.settings));
+  const appointments = useAppStore(useShallow((s) => s.appointments));
   const todayStr = new Date().toISOString().slice(0, 10);
 
   const grid = getMonthGrid(year, month, settings.startWeekOnMonday);

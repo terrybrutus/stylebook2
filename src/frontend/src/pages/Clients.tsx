@@ -9,6 +9,7 @@ import {
   X,
 } from "lucide-react";
 import { useMemo, useState } from "react";
+import { useShallow } from "zustand/shallow";
 import {
   formatDate,
   formatDuration,
@@ -19,7 +20,7 @@ import { useAppStore } from "../store/useAppStore";
 import type { Appointment, Client } from "../types";
 
 export default function Clients() {
-  const appointments = useAppStore((s) => s.appointments);
+  const appointments = useAppStore(useShallow((s) => s.appointments));
   const [search, setSearch] = useState("");
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
 

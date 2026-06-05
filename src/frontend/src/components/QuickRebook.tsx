@@ -1,5 +1,6 @@
 import { Clock, RotateCcw } from "lucide-react";
 import { useMemo } from "react";
+import { useShallow } from "zustand/shallow";
 import { formatDate } from "../lib/utils";
 import { useAppStore } from "../store/useAppStore";
 import type { Appointment } from "../types";
@@ -17,7 +18,7 @@ interface Props {
 }
 
 export default function QuickRebook({ onRebook }: Props) {
-  const appointments = useAppStore((s) => s.appointments);
+  const appointments = useAppStore(useShallow((s) => s.appointments));
 
   const clients = useMemo<Client[]>(() => {
     const map = new Map<string, Appointment>();

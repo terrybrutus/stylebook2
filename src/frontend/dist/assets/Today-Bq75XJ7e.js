@@ -1,8 +1,9 @@
-import { c as createLucideIcon, u as useAppStore, r as reactExports, j as jsxRuntimeExports, C as CalendarCheck, S as Scissors } from "./index-BXnX58Ps.js";
-import { A as AppointmentModal } from "./AppointmentModal-D1AysbQ8.js";
-import { f as formatDate, g as getTodayString, a as formatTime12, b as formatDuration, c as formatPrice } from "./utils-C78N2dWx.js";
-import { C as Clock } from "./clock-DVCwDNUh.js";
-import { P as Plus } from "./triangle-alert-BDl2oy9M.js";
+import { c as createLucideIcon, u as useAppStore, r as reactExports, j as jsxRuntimeExports, C as CalendarCheck, S as Scissors } from "./index-BUnhKn-w.js";
+import { A as AppointmentModal } from "./AppointmentModal-CM4Vg7FT.js";
+import { f as formatDate, g as getTodayString, a as formatTime12, b as formatDuration, c as formatPrice } from "./utils-OLsRQTl3.js";
+import { u as useShallow } from "./shallow-DW0QPtHQ.js";
+import { C as Clock } from "./clock-DVuaqdnk.js";
+import { P as Plus } from "./triangle-alert-CML8_Yos.js";
 /**
  * @license lucide-react v0.511.0 - ISC
  *
@@ -15,7 +16,7 @@ const __iconNode = [
 ];
 const RotateCcw = createLucideIcon("rotate-ccw", __iconNode);
 function QuickRebook({ onRebook }) {
-  const appointments = useAppStore((s) => s.appointments);
+  const appointments = useAppStore(useShallow((s) => s.appointments));
   const clients = reactExports.useMemo(() => {
     const map = /* @__PURE__ */ new Map();
     const sorted = [...appointments].sort(
@@ -74,7 +75,9 @@ function QuickRebook({ onRebook }) {
 function Today() {
   const today = getTodayString();
   const appointments = useAppStore(
-    (s) => s.appointments.filter((a) => a.date === today).sort((a, b) => a.startTime.localeCompare(b.startTime))
+    useShallow(
+      (s) => s.appointments.filter((a) => a.date === today).sort((a, b) => a.startTime.localeCompare(b.startTime))
+    )
   );
   const [modalState, setModalState] = reactExports.useState({
     isOpen: false,

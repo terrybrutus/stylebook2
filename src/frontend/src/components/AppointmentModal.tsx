@@ -4,6 +4,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { AlertTriangle, Info, X } from "lucide-react";
 import React, { useCallback, useEffect, useRef, useState } from "react";
+import { useShallow } from "zustand/shallow";
 import {
   createAppointment,
   getClientNames,
@@ -87,12 +88,10 @@ export default function AppointmentModal({
   prefillClientName,
   prefillServiceId,
 }: Props) {
-  const {
-    services,
-    appointments,
-    addAppointment,
-    updateAppointment: storeUpdate,
-  } = useAppStore();
+  const services = useAppStore(useShallow((s) => s.services));
+  const appointments = useAppStore(useShallow((s) => s.appointments));
+  const addAppointment = useAppStore((s) => s.addAppointment);
+  const storeUpdate = useAppStore((s) => s.updateAppointment);
   const [form, setForm] = useState<FormState>(
     defaultForm(appointment, prefillDate, prefillTime, services),
   );

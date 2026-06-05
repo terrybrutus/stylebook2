@@ -7,6 +7,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { useCallback, useState } from "react";
+import { useShallow } from "zustand/shallow";
 import { ServiceModal } from "../components/ServiceModal";
 import { deleteService } from "../lib/api";
 import { formatDuration, formatPrice } from "../lib/utils";
@@ -14,7 +15,7 @@ import { useAppStore } from "../store/useAppStore";
 import type { Service } from "../types";
 
 export default function Services() {
-  const services = useAppStore((s) => s.services);
+  const services = useAppStore(useShallow((s) => s.services));
   const deleteServiceStore = useAppStore((s) => s.deleteService);
 
   // Modal state

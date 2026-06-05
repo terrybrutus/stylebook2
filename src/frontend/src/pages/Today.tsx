@@ -1,5 +1,6 @@
 import { CalendarCheck, Plus, Scissors } from "lucide-react";
 import { useState } from "react";
+import { useShallow } from "zustand/shallow";
 import AppointmentModal from "../components/AppointmentModal";
 import QuickRebook from "../components/QuickRebook";
 import {
@@ -14,10 +15,12 @@ import type { Appointment } from "../types";
 
 export default function Today() {
   const today = getTodayString();
-  const appointments = useAppStore((s) =>
-    s.appointments
-      .filter((a) => a.date === today)
-      .sort((a, b) => a.startTime.localeCompare(b.startTime)),
+  const appointments = useAppStore(
+    useShallow((s) =>
+      s.appointments
+        .filter((a) => a.date === today)
+        .sort((a, b) => a.startTime.localeCompare(b.startTime)),
+    ),
   );
 
   const [modalState, setModalState] = useState<{

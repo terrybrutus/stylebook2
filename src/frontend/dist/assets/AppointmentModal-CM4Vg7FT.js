@@ -1,6 +1,7 @@
-import { c as createLucideIcon, r as reactExports, j as jsxRuntimeExports, R as React, u as useAppStore, g as getClientNames, e as createAppointment, f as updateAppointment, h as React$1 } from "./index-BXnX58Ps.js";
-import { m as clsx, n as cn, X, b as formatDuration, g as getTodayString, o as doBlocksOverlap } from "./utils-C78N2dWx.js";
-import { T as TriangleAlert } from "./triangle-alert-BDl2oy9M.js";
+import { c as createLucideIcon, r as reactExports, j as jsxRuntimeExports, R as React, u as useAppStore, g as getClientNames, e as createAppointment, f as updateAppointment, h as React$1 } from "./index-BUnhKn-w.js";
+import { m as clsx, n as cn, X, b as formatDuration, g as getTodayString, o as doBlocksOverlap } from "./utils-OLsRQTl3.js";
+import { u as useShallow } from "./shallow-DW0QPtHQ.js";
+import { T as TriangleAlert } from "./triangle-alert-CML8_Yos.js";
 /**
  * @license lucide-react v0.511.0 - ISC
  *
@@ -357,12 +358,10 @@ function AppointmentModal({
   prefillClientName,
   prefillServiceId
 }) {
-  const {
-    services,
-    appointments,
-    addAppointment,
-    updateAppointment: storeUpdate
-  } = useAppStore();
+  const services = useAppStore(useShallow((s) => s.services));
+  const appointments = useAppStore(useShallow((s) => s.appointments));
+  const addAppointment = useAppStore((s) => s.addAppointment);
+  const storeUpdate = useAppStore((s) => s.updateAppointment);
   const [form, setForm] = reactExports.useState(
     defaultForm(appointment, prefillDate, prefillTime, services)
   );

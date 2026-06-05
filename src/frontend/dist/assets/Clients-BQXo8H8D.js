@@ -1,8 +1,9 @@
-import { c as createLucideIcon, u as useAppStore, r as reactExports, j as jsxRuntimeExports, U as Users } from "./index-BXnX58Ps.js";
-import { X, f as formatDate, a as formatTime12, b as formatDuration, c as formatPrice } from "./utils-C78N2dWx.js";
-import { C as ChevronRight } from "./chevron-right-Db0eAG2R.js";
-import { C as Clock } from "./clock-DVCwDNUh.js";
-import { C as Calendar } from "./calendar-BgtafcY6.js";
+import { c as createLucideIcon, u as useAppStore, r as reactExports, j as jsxRuntimeExports, U as Users } from "./index-BUnhKn-w.js";
+import { X, f as formatDate, a as formatTime12, b as formatDuration, c as formatPrice } from "./utils-OLsRQTl3.js";
+import { u as useShallow } from "./shallow-DW0QPtHQ.js";
+import { C as ChevronRight } from "./chevron-right-NlKZvk8X.js";
+import { C as Clock } from "./clock-DVuaqdnk.js";
+import { C as Calendar } from "./calendar-Q7rp3eKK.js";
 /**
  * @license lucide-react v0.511.0 - ISC
  *
@@ -40,7 +41,7 @@ const __iconNode = [
 ];
 const Search = createLucideIcon("search", __iconNode);
 function Clients() {
-  const appointments = useAppStore((s) => s.appointments);
+  const appointments = useAppStore(useShallow((s) => s.appointments));
   const [search, setSearch] = reactExports.useState("");
   const [selectedClient, setSelectedClient] = reactExports.useState(null);
   const clients = reactExports.useMemo(() => {

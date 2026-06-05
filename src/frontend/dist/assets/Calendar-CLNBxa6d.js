@@ -1,8 +1,9 @@
-import { c as createLucideIcon, u as useAppStore, r as reactExports, j as jsxRuntimeExports, a as useRouterState, b as useNavigate, d as CalendarDays } from "./index-BXnX58Ps.js";
-import { B as Button, A as AppointmentModal } from "./AppointmentModal-D1AysbQ8.js";
-import { d as generateTimeSlots, e as getCurrentTimePixels, t as timeToPixels, h as durationToPixels, a as formatTime12, i as hexToRgba, b as formatDuration, c as formatPrice, j as getMonthGrid, k as dateToString, l as getWeekDates } from "./utils-C78N2dWx.js";
-import { C as ChevronRight } from "./chevron-right-Db0eAG2R.js";
-import { P as Plus } from "./triangle-alert-BDl2oy9M.js";
+import { c as createLucideIcon, u as useAppStore, r as reactExports, j as jsxRuntimeExports, a as useRouterState, b as useNavigate, d as CalendarDays } from "./index-BUnhKn-w.js";
+import { B as Button, A as AppointmentModal } from "./AppointmentModal-CM4Vg7FT.js";
+import { d as generateTimeSlots, e as getCurrentTimePixels, t as timeToPixels, h as durationToPixels, a as formatTime12, i as hexToRgba, b as formatDuration, c as formatPrice, j as getMonthGrid, k as dateToString, l as getWeekDates } from "./utils-OLsRQTl3.js";
+import { u as useShallow } from "./shallow-DW0QPtHQ.js";
+import { C as ChevronRight } from "./chevron-right-NlKZvk8X.js";
+import { P as Plus } from "./triangle-alert-CML8_Yos.js";
 /**
  * @license lucide-react v0.511.0 - ISC
  *
@@ -69,9 +70,9 @@ function getPhaseStartMinutes$1(phase) {
   return h * 60 + m;
 }
 function DayView({ date, onModalChange }) {
-  const settings = useAppStore((s) => s.settings);
+  const settings = useAppStore(useShallow((s) => s.settings));
   const appointments = useAppStore(
-    (s) => s.appointments.filter((a) => a.date === date)
+    useShallow((s) => s.appointments.filter((a) => a.date === date))
   );
   const startHour = Number(settings.workingHoursStart.split(":")[0]);
   const endHour = Number(settings.workingHoursEnd.split(":")[0]);
@@ -367,8 +368,8 @@ function AppointmentBlock({
 const DAY_NAMES_MON = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const DAY_NAMES_SUN = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 function MonthView({ year, month, onDayClick, onModalChange }) {
-  const settings = useAppStore((s) => s.settings);
-  const appointments = useAppStore((s) => s.appointments);
+  const settings = useAppStore(useShallow((s) => s.settings));
+  const appointments = useAppStore(useShallow((s) => s.appointments));
   const todayStr = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
   const grid = getMonthGrid(year, month, settings.startWeekOnMonday);
   const dayNames = settings.startWeekOnMonday ? DAY_NAMES_MON : DAY_NAMES_SUN;
@@ -470,8 +471,8 @@ function WeekView({
   onModalChange,
   onDayClick: _onDayClick
 }) {
-  const settings = useAppStore((s) => s.settings);
-  const allAppointments = useAppStore((s) => s.appointments);
+  const settings = useAppStore(useShallow((s) => s.settings));
+  const allAppointments = useAppStore(useShallow((s) => s.appointments));
   const startHour = Number(settings.workingHoursStart.split(":")[0]);
   const endHour = Number(settings.workingHoursEnd.split(":")[0]);
   const timeSlots = generateTimeSlots(startHour, endHour);

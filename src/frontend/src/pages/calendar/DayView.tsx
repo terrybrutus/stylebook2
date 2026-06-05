@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useShallow } from "zustand/shallow";
 import {
   durationToPixels,
   formatDuration,
@@ -60,9 +61,9 @@ function getPhaseStartMinutes(phase: { startTime: string }): number {
 }
 
 export function DayView({ date, onModalChange }: Props) {
-  const settings = useAppStore((s) => s.settings);
-  const appointments = useAppStore((s) =>
-    s.appointments.filter((a) => a.date === date),
+  const settings = useAppStore(useShallow((s) => s.settings));
+  const appointments = useAppStore(
+    useShallow((s) => s.appointments.filter((a) => a.date === date)),
   );
 
   const startHour = Number(settings.workingHoursStart.split(":")[0]);
