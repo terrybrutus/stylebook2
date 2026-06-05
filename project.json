@@ -1,0 +1,22 @@
+{
+  "overview": "StyleBook is a mobile-first PWA scheduling app for hairstylists to manage all their appointments, services, and client history in one place.",
+  "features": [
+    "Day, Week, and Month calendar views with color-coded appointment blocks",
+    "Multiphase appointment support for services like Perm and Color",
+    "13 pre-seeded services with full edit, duplicate, and delete actions",
+    "Client history with search and Quick Rebook feature",
+    "Today view with chronological appointment list",
+    "Settings for dark mode, start-of-week, and working hours",
+    "Mobile-first PWA installable on iPhone and Android"
+  ],
+  "category": "productivity",
+  "tags": [
+    "scheduling",
+    "hairstylist",
+    "calendar",
+    "pwa",
+    "mobile-first",
+    "appointments"
+  ],
+  "last_updated": "2026-06-01T18:45:02.311Z"
+}

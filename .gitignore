@@ -1,5 +1,7 @@
-node_modules
-dist
-.env
-.env.local
-*.local
+node_modules/
+dist/
+.mops/
+.old/
+.platform/
+.pnpm-store/
+.cache/
