@@ -24,6 +24,10 @@ function RootLayout() {
   useInitData();
   return (
     <Layout>
+      {/* TEST BANNER — remove after confirming import works */}
+      <div style={{ background: '#FF6B00', color: '#fff', textAlign: 'center', padding: '6px', fontSize: 13, fontWeight: 'bold', letterSpacing: 1, position: 'relative', zIndex: 9999 }}>
+        ✓ CLAUDE CODE UPDATE APPLIED
+      </div>
       <Outlet />
     </Layout>
   );
