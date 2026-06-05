@@ -1,1 +1,1 @@
-force import trigger
+force import trigge
