@@ -156,14 +156,16 @@ export function DayView({ date, onModalChange }: Props) {
     label: string;
     phaseIndex: number;
     color: string;
+    leftPct: string;
+    zIdx: number;
   };
 
-  const blocks: RenderBlock[] = [];
+  const rawBlocks: Omit<RenderBlock, 'leftPct' | 'zIdx'>[] = [];
   for (const appt of appointments) {
     if (appt.phases.length === 0) {
       const top = timeToPixels(appt.startTime, startHour);
       const height = Math.max(durationToPixels(appt.durationMinutes), 20);
-      blocks.push({
+      rawBlocks.push({
         appt,
         topPx: top,
         heightPx: height,
@@ -178,7 +180,7 @@ export function DayView({ date, onModalChange }: Props) {
         const topPx = ((startMin - startHour * 60) / 60) * HOUR_PX;
         const height = Math.max(durationToPixels(phase.durationMinutes), 20);
         const { label, isProcessing } = getBlockLabel(appt, i);
-        blocks.push({
+        rawBlocks.push({
           appt,
           topPx,
           heightPx: height,
@@ -190,9 +192,22 @@ export function DayView({ date, onModalChange }: Props) {
       });
     }
   }
+  rawBlocks.sort((a, b) => a.topPx - b.topPx);
+  const overlapOrder: number[] = rawBlocks.map(() => 0);
+  for (let i = 0; i < rawBlocks.length; i++) {
+    for (let j = i + 1; j < rawBlocks.length; j++) {
+      if (rawBlocks[j].topPx >= rawBlocks[i].topPx + rawBlocks[i].heightPx) break;
+      overlapOrder[j] = Math.max(overlapOrder[j], overlapOrder[i] + 1);
+    }
+  }
+  const cascadeOffsets = ['0%', '20%', '40%'];
+  const blocks: RenderBlock[] = rawBlocks.map((b, i) => {
+    const order = Math.min(overlapOrder[i], 2);
+    return { ...b, leftPct: cascadeOffsets[order], zIdx: (b.isProcessing ? 5 : 10) + order };
+  });
 
   return (
-    <div className="flex flex-1 overflow-hidden" ref={containerRef}>
+    <div className="flex flex-1 overflow-auto" ref={containerRef} style={{ touchAction: 'pan-y', overscrollBehavior: 'none' }}>
       {/* Time labels column */}
       <div
         className="w-14 flex-shrink-0 bg-background border-r border-border relative"
@@ -260,6 +275,8 @@ export function DayView({ date, onModalChange }: Props) {
           <AppointmentBlock
             key={`${block.appt.id}-${block.phaseIndex}-${idx}`}
             block={block}
+            leftPct={block.leftPct}
+            zIdx={block.zIdx}
             onEdit={handleApptClick}
             onContextMenu={handleApptContextMenu}
             onTouchStart={handleTouchStart}
@@ -333,6 +350,8 @@ type BlockProps = {
     label: string;
     color: string;
   };
+  leftPct: string;
+  zIdx: number;
   onEdit: (e: React.MouseEvent, appt: Appointment) => void;
   onContextMenu: (e: React.MouseEvent, appt: Appointment) => void;
   onTouchStart: (e: React.TouchEvent, appt: Appointment) => void;
@@ -341,6 +360,8 @@ type BlockProps = {
 
 function AppointmentBlock({
   block,
+  leftPct,
+  zIdx,
   onEdit,
   onContextMenu,
   onTouchStart,
@@ -362,11 +383,13 @@ function AppointmentBlock({
   return (
     // biome-ignore lint/a11y/useKeyWithClickEvents: appointment block handles keyboard via parent
     <div
-      className="absolute left-1 right-1 rounded-md border overflow-hidden cursor-pointer select-none"
+      className="absolute right-1 rounded-md border overflow-hidden cursor-pointer select-none"
       style={{
         top: topPx + 1,
         height: heightPx - 2,
-        zIndex: 10,
+        left: `calc(${leftPct} + 4px)`,
+        zIndex: zIdx,
+        borderLeft: leftPct !== '0%' ? `3px solid ${color}` : undefined,
         ...bgStyle,
       }}
       onClick={(e) => {

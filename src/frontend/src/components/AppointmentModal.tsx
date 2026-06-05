@@ -92,6 +92,8 @@ export default function AppointmentModal({
   const appointments = useAppStore(useShallow((s) => s.appointments));
   const addAppointment = useAppStore((s) => s.addAppointment);
   const storeUpdate = useAppStore((s) => s.updateAppointment);
+  const deleteAppointment = useAppStore((s) => s.deleteAppointment);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [form, setForm] = useState<FormState>(
     defaultForm(appointment, prefillDate, prefillTime, services),
   );
@@ -592,7 +594,7 @@ export default function AppointmentModal({
               <option value="">Select a service…</option>
               {services.map((s) => (
                 <option key={s.id} value={s.id}>
-                  {s.name} — ${s.price}
+                  {s.name}
                 </option>
               ))}
             </select>
@@ -822,35 +824,73 @@ export default function AppointmentModal({
         </div>
 
         {/* Footer actions */}
-        <div className="flex gap-3 px-5 py-4 border-t border-border flex-shrink-0">
-          <Button
-            type="button"
-            variant="outline"
-            className="flex-1"
-            onClick={onClose}
-            data-ocid="appointment.cancel_button"
-          >
-            Cancel
-          </Button>
-          <Button
-            type="button"
-            className="flex-1 bg-accent hover:bg-accent/90 text-accent-foreground"
-            onClick={handleSubmit}
-            disabled={
-              submitting ||
-              !form.clientName.trim() ||
-              !form.serviceId ||
-              !form.date ||
-              !form.startTime
-            }
-            data-ocid="appointment.submit_button"
-          >
-            {submitting
-              ? "Saving…"
-              : mode === "create"
-                ? "Book Appointment"
-                : "Save Changes"}
-          </Button>
+        <div className="flex flex-col gap-2 px-5 py-4 border-t border-border flex-shrink-0">
+          <div className="flex gap-3">
+            <Button
+              type="button"
+              variant="outline"
+              className="flex-1"
+              onClick={onClose}
+              data-ocid="appointment.cancel_button"
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              className="flex-1 bg-accent hover:bg-accent/90 text-accent-foreground"
+              onClick={handleSubmit}
+              disabled={
+                submitting ||
+                !form.clientName.trim() ||
+                !form.serviceId ||
+                !form.date ||
+                !form.startTime
+              }
+              data-ocid="appointment.submit_button"
+            >
+              {submitting
+                ? "Saving…"
+                : mode === "create"
+                  ? "Book Appointment"
+                  : "Save Changes"}
+            </Button>
+          </div>
+          {mode === "edit" && appointment && (
+            confirmDelete ? (
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="flex-1 text-sm"
+                  onClick={() => setConfirmDelete(false)}
+                >
+                  Keep
+                </Button>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  className="flex-1 text-sm"
+                  onClick={() => {
+                    deleteAppointment(appointment.id);
+                    onClose();
+                  }}
+                  data-ocid="appointment.confirm_delete_button"
+                >
+                  Confirm Delete
+                </Button>
+              </div>
+            ) : (
+              <Button
+                type="button"
+                variant="ghost"
+                className="w-full text-destructive hover:bg-destructive/10 text-sm"
+                onClick={() => setConfirmDelete(true)}
+                data-ocid="appointment.delete_button"
+              >
+                Delete Appointment
+              </Button>
+            )
+          )}
         </div>
       </div>
     </dialog>
