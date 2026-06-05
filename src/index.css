@@ -1,0 +1,16 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; padding: 0; }
+input, select, textarea { font-size: 16px !important; }
+
+.calendar-grid {
+  touch-action: pan-y;
+  overscroll-behavior: none;
+  -webkit-overflow-scrolling: touch;
+}
+body {
+  overscroll-behavior: none;
+}
