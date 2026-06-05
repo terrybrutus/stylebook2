@@ -10,6 +10,10 @@ interface Props {
   onAppointmentClick: (appt: Appointment) => void;
 }
 
+// px per minute — enough for 30-min blocks to show name + service comfortably
+const PPM = 2.5;
+const MIN_BLOCK_HEIGHT = 28;
+
 export default function WeekView({ weekDate, onSlotClick, onAppointmentClick }: Props) {
   const { appointments, settings, services } = useStore(useShallow((s) => ({
     appointments: s.appointments,
@@ -19,70 +23,83 @@ export default function WeekView({ weekDate, onSlotClick, onAppointmentClick }: 
 
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const pixelsPerMinute = 1.5;
-  const startHour = Math.floor(settings.workingHoursStart / 60);
-  const endHour = Math.ceil(settings.workingHoursEnd / 60);
-  const totalMinutes = (endHour - startHour) * 60;
-  const gridHeight = totalMinutes * pixelsPerMinute;
+  const startMin = settings.workingHoursStart;
+  const endMin   = settings.workingHoursEnd;
+  const startHour = Math.floor(startMin / 60);
+  const endHour   = Math.ceil(endMin / 60);
+  const gridHeight = (endMin - startMin) * PPM;
 
   const now = new Date();
   const todayStr = dateStringFromDate(now);
   const currentMinutes = now.getHours() * 60 + now.getMinutes();
-  const currentTop = (currentMinutes - settings.workingHoursStart) * pixelsPerMinute;
+  const currentTop = (currentMinutes - startMin) * PPM;
 
-  // Detect mobile portrait: show 3 days
-  const [isMobilePortrait, setIsMobilePortrait] = useState(false);
+  // Mobile portrait detection
+  const [isMobilePortrait, setIsMobilePortrait] = useState(
+    () => window.innerWidth < 640 && window.innerHeight > window.innerWidth
+  );
   useEffect(() => {
-    const check = () => setIsMobilePortrait(window.innerWidth < 640 && window.innerHeight > window.innerWidth);
-    check();
+    const check = () =>
+      setIsMobilePortrait(window.innerWidth < 640 && window.innerHeight > window.innerWidth);
     window.addEventListener('resize', check);
     return () => window.removeEventListener('resize', check);
   }, []);
 
-  const numDays = isMobilePortrait ? 3 : 7;
+  const [mobileOffset, setMobileOffset] = useState(0);
 
   const wStart = weekStart(weekDate, settings.startWeekOnMonday);
-  const days = Array.from({ length: numDays }, (_, i) => addDays(wStart, i));
-
-  // For 3-day mobile, allow offset
-  const [mobileOffset, setMobileOffset] = useState(0);
+  const allDays = Array.from({ length: 7 }, (_, i) => addDays(wStart, i));
   const visibleDays = isMobilePortrait
     ? Array.from({ length: 3 }, (_, i) => addDays(wStart, mobileOffset + i))
-    : days;
+    : allDays;
 
+  // Scroll to current time on mount / week change
   useEffect(() => {
     if (containerRef.current) {
-      const scrollTo = Math.max(0, currentTop - 100);
-      containerRef.current.scrollTop = scrollTo;
+      containerRef.current.scrollTop = Math.max(0, currentTop - 120);
     }
   }, [dateStringFromDate(weekDate)]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const timeLabels: { mins: number; top: number; label: string }[] = [];
+  // Hour and half-hour grid lines
+  const hourLines: { top: number; isHour: boolean }[] = [];
   for (let h = startHour; h <= endHour; h++) {
-    const mins = h * 60;
-    const top = (mins - settings.workingHoursStart) * pixelsPerMinute;
-    timeLabels.push({ mins, top, label: formatTime(mins) });
+    const m = h * 60;
+    if (m >= startMin && m <= endMin) {
+      hourLines.push({ top: (m - startMin) * PPM, isHour: true });
+    }
+    const half = h * 60 + 30;
+    if (half > startMin && half < endMin) {
+      hourLines.push({ top: (half - startMin) * PPM, isHour: false });
+    }
+  }
+
+  const timeLabels: { top: number; label: string }[] = [];
+  for (let h = startHour; h <= endHour; h++) {
+    const m = h * 60;
+    if (m >= startMin && m <= endMin) {
+      timeLabels.push({ top: (m - startMin) * PPM, label: formatTime(m) });
+    }
   }
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      {/* Day headers */}
+      {/* Day header row */}
       <div className="flex flex-shrink-0 bg-white dark:bg-brand-dark border-b border-gray-200 dark:border-brand-mid">
-        <div className="w-12 flex-shrink-0" />
+        <div className="w-14 flex-shrink-0" />
         {visibleDays.map((d) => {
           const ds = dateStringFromDate(d);
           const isToday = ds === todayStr;
           return (
             <div
               key={ds}
-              className={`flex-1 text-center py-2 text-xs font-medium ${
-                isToday ? 'text-brand-teal' : 'text-gray-600 dark:text-gray-300'
+              className={`flex-1 text-center py-2 text-xs font-medium select-none ${
+                isToday ? 'text-brand-teal' : 'text-gray-500 dark:text-gray-300'
               }`}
             >
-              <div>{DAY_NAMES[d.getDay()]}</div>
+              <div className="uppercase tracking-wide">{DAY_NAMES[d.getDay()]}</div>
               <div
-                className={`text-base font-bold mx-auto w-7 h-7 flex items-center justify-center rounded-full ${
-                  isToday ? 'bg-brand-teal text-white' : ''
+                className={`mx-auto mt-0.5 w-8 h-8 flex items-center justify-center rounded-full text-sm font-bold ${
+                  isToday ? 'bg-brand-teal text-white' : 'text-gray-700 dark:text-gray-100'
                 }`}
               >
                 {d.getDate()}
@@ -92,41 +109,39 @@ export default function WeekView({ weekDate, onSlotClick, onAppointmentClick }: 
         })}
       </div>
 
-      {/* Mobile swipe navigation */}
+      {/* Mobile prev/next */}
       {isMobilePortrait && (
-        <div className="flex justify-between px-2 py-1 bg-gray-50 dark:bg-brand-mid text-xs flex-shrink-0">
+        <div className="flex justify-between items-center px-3 py-1 bg-gray-50 dark:bg-brand-mid text-xs flex-shrink-0 border-b border-gray-200 dark:border-brand-mid">
           <button
-            onClick={() => setMobileOffset((o) => o - 3)}
+            onClick={() => setMobileOffset((o) => Math.max(0, o - 3))}
             disabled={mobileOffset <= 0}
-            className="px-3 py-1 rounded bg-brand-teal text-white disabled:opacity-30"
+            className="px-3 py-1 rounded bg-brand-teal text-white disabled:opacity-30 font-medium"
           >
             ‹ Prev
           </button>
+          <span className="text-gray-400 dark:text-gray-400">
+            {formatTime(0)} — showing {visibleDays[0] ? visibleDays[0].getDate() : ''}–{visibleDays[2] ? visibleDays[2].getDate() : ''}
+          </span>
           <button
-            onClick={() => setMobileOffset(0)}
-            className="px-3 py-1 rounded bg-gray-200 dark:bg-brand-dark"
-          >
-            Reset
-          </button>
-          <button
-            onClick={() => setMobileOffset((o) => o + 3)}
+            onClick={() => setMobileOffset((o) => Math.min(4, o + 3))}
             disabled={mobileOffset + 3 >= 7}
-            className="px-3 py-1 rounded bg-brand-teal text-white disabled:opacity-30"
+            className="px-3 py-1 rounded bg-brand-teal text-white disabled:opacity-30 font-medium"
           >
             Next ›
           </button>
         </div>
       )}
 
-      {/* Scrollable time grid */}
+      {/* Scrollable grid */}
       <div ref={containerRef} className="flex-1 overflow-y-auto overflow-x-hidden">
-        <div className="flex" style={{ height: gridHeight }}>
-          {/* Time labels */}
-          <div className="w-12 flex-shrink-0 relative" style={{ height: gridHeight }}>
-            {timeLabels.map(({ mins, top, label }) => (
+        <div className="flex relative" style={{ height: gridHeight + 32 }}>
+
+          {/* Time label column */}
+          <div className="w-14 flex-shrink-0 relative select-none" style={{ height: gridHeight }}>
+            {timeLabels.map(({ top, label }) => (
               <div
-                key={mins}
-                className="absolute right-1 text-xs text-gray-400 dark:text-gray-500 select-none leading-none"
+                key={label}
+                className="absolute right-2 text-xs text-gray-400 dark:text-gray-500 leading-none"
                 style={{ top: top - 7 }}
               >
                 {label}
@@ -134,7 +149,7 @@ export default function WeekView({ weekDate, onSlotClick, onAppointmentClick }: 
             ))}
           </div>
 
-          {/* Columns */}
+          {/* Day columns */}
           {visibleDays.map((d) => {
             const ds = dateStringFromDate(d);
             const isToday = ds === todayStr;
@@ -143,68 +158,64 @@ export default function WeekView({ weekDate, onSlotClick, onAppointmentClick }: 
             return (
               <div
                 key={ds}
-                className="flex-1 relative border-l border-gray-200 dark:border-brand-mid/40 cursor-pointer"
+                className="flex-1 relative border-l border-gray-200 dark:border-gray-700"
                 style={{ height: gridHeight }}
                 onClick={(e) => {
                   const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
                   const y = e.clientY - rect.top;
-                  const mins = Math.floor(y / pixelsPerMinute) + settings.workingHoursStart;
-                  const snapped = Math.round(mins / 15) * 15;
-                  onSlotClick(ds, snapped);
+                  const mins = Math.round((y / PPM + startMin) / 15) * 15;
+                  onSlotClick(ds, mins);
                 }}
               >
-                {/* Grid lines - ALL columns */}
-                {timeLabels.map(({ mins, top }) => (
+                {/* Grid lines */}
+                {hourLines.map(({ top, isHour }, i) => (
                   <div
-                    key={mins}
-                    className="absolute left-0 right-0 border-t border-gray-200 dark:border-brand-mid/40 pointer-events-none"
+                    key={i}
+                    className={`absolute left-0 right-0 pointer-events-none ${
+                      isHour
+                        ? 'border-t border-gray-200 dark:border-gray-700'
+                        : 'border-t border-gray-100 dark:border-gray-800'
+                    }`}
                     style={{ top }}
                   />
                 ))}
-                {Array.from({ length: (endHour - startHour) * 2 }).map((_, i) => {
-                  const mins = settings.workingHoursStart + i * 30;
-                  if (mins % 60 === 0) return null;
-                  const top = (mins - settings.workingHoursStart) * pixelsPerMinute;
-                  return (
-                    <div
-                      key={`half-${i}`}
-                      className="absolute left-0 right-0 border-t border-gray-100 dark:border-brand-mid/20 pointer-events-none"
-                      style={{ top }}
-                    />
-                  );
-                })}
 
-                {/* Current time */}
-                {isToday && currentMinutes >= settings.workingHoursStart && currentMinutes <= settings.workingHoursEnd && (
+                {/* Current time indicator — today only */}
+                {isToday && currentMinutes >= startMin && currentMinutes <= endMin && (
                   <div
-                    className="absolute left-0 right-0 z-20 pointer-events-none"
+                    className="absolute left-0 right-0 z-20 pointer-events-none flex items-center"
                     style={{ top: currentTop }}
                   >
-                    <div className="h-0.5 bg-brand-teal w-full" />
+                    <div className="w-2 h-2 rounded-full bg-brand-teal flex-shrink-0 -ml-1" />
+                    <div className="flex-1 h-0.5 bg-brand-teal" />
                   </div>
                 )}
 
-                {/* Appointments */}
+                {/* Appointment blocks */}
                 {colAppts.map((appt) => {
                   const svc = services.find((s) => s.id === appt.serviceId);
                   const color = svc?.color ?? '#00ADB5';
 
+                  // Multiphase: render each phase as its own block
                   if (appt.phases && appt.phases.length > 0) {
                     return appt.phases.map((ph) => {
-                      const top = (ph.startTime - settings.workingHoursStart) * pixelsPerMinute;
-                      const height = Math.max(ph.duration * pixelsPerMinute, 16);
+                      const top = (ph.startTime - startMin) * PPM;
+                      const height = Math.max(ph.duration * PPM, MIN_BLOCK_HEIGHT);
                       const isProcessing = ph.type === 'processing';
+
                       return (
                         <div
                           key={`${appt.id}-${ph.phaseId}`}
-                          className="absolute left-0.5 right-0.5 rounded overflow-hidden cursor-pointer z-10"
+                          className="absolute left-0.5 right-0.5 rounded cursor-pointer overflow-hidden"
                           style={{
                             top,
                             height,
+                            // Processing blocks sit below any active appointment in the same slot
+                            zIndex: isProcessing ? 5 : 10,
                             backgroundColor: color,
-                            opacity: isProcessing ? 0.55 : 1,
+                            opacity: isProcessing ? 0.45 : 1,
                             backgroundImage: isProcessing
-                              ? 'repeating-linear-gradient(45deg, rgba(255,255,255,0.15) 0, rgba(255,255,255,0.15) 4px, transparent 4px, transparent 12px)'
+                              ? 'repeating-linear-gradient(45deg, rgba(255,255,255,0.2) 0px, rgba(255,255,255,0.2) 5px, transparent 5px, transparent 14px)'
                               : undefined,
                           }}
                           onClick={(e) => {
@@ -212,51 +223,68 @@ export default function WeekView({ weekDate, onSlotClick, onAppointmentClick }: 
                             onAppointmentClick(appt);
                           }}
                         >
-                          {height >= 24 && (
-                            <div className="px-0.5 py-0.5 text-white text-xs leading-tight overflow-hidden h-full">
-                              <div className="font-bold truncate" style={{ fontSize: '10px' }}>{appt.clientName}</div>
+                          <div className="px-1.5 py-1 text-white overflow-hidden h-full flex flex-col justify-start">
+                            <div
+                              className="font-bold leading-tight truncate"
+                              style={{ fontSize: 11 }}
+                            >
+                              {appt.clientName}
                             </div>
-                          )}
+                            {height >= 42 && (
+                              <div
+                                className="leading-tight opacity-90 mt-0.5"
+                                style={{
+                                  fontSize: 10,
+                                  wordBreak: 'break-word',
+                                  overflowWrap: 'break-word',
+                                }}
+                              >
+                                {isProcessing ? 'Processing' : ph.name}
+                              </div>
+                            )}
+                          </div>
                         </div>
                       );
                     });
                   }
 
-                  const top = (appt.startTime - settings.workingHoursStart) * pixelsPerMinute;
-                  const height = Math.max(appt.duration * pixelsPerMinute, 16);
+                  // Single-phase block
+                  const top = (appt.startTime - startMin) * PPM;
+                  const height = Math.max(appt.duration * PPM, MIN_BLOCK_HEIGHT);
+
                   return (
                     <div
                       key={appt.id}
-                      className="absolute left-0.5 right-0.5 rounded overflow-hidden cursor-pointer z-10"
-                      style={{ top, height, backgroundColor: color }}
+                      className="absolute left-0.5 right-0.5 rounded cursor-pointer overflow-hidden"
+                      style={{ top, height, zIndex: 10, backgroundColor: color }}
                       onClick={(e) => {
                         e.stopPropagation();
                         onAppointmentClick(appt);
                       }}
                     >
-                      <div className="px-0.5 py-0.5 text-white overflow-hidden h-full">
-                        {height < 30 ? (
-                          <div className="font-bold truncate" style={{ fontSize: '10px' }}>{appt.clientName}</div>
-                        ) : (
-                          <>
-                            <div className="font-bold truncate" style={{ fontSize: '10px' }}>{appt.clientName}</div>
-                            <div
-                              style={{
-                                fontSize: '9px',
-                                wordBreak: 'break-word',
-                                overflowWrap: 'break-word',
-                                opacity: 0.85,
-                                lineHeight: '1.2',
-                              }}
-                            >
-                              {appt.serviceName}
-                            </div>
-                            {height >= 50 && (
-                              <div style={{ fontSize: '9px', opacity: 0.7 }}>
-                                {appt.duration}m · ${appt.price}
-                              </div>
-                            )}
-                          </>
+                      <div className="px-1.5 py-1 text-white overflow-hidden h-full flex flex-col justify-start">
+                        <div
+                          className="font-bold leading-tight truncate"
+                          style={{ fontSize: 11 }}
+                        >
+                          {appt.clientName}
+                        </div>
+                        {height >= 42 && (
+                          <div
+                            className="leading-tight opacity-90 mt-0.5"
+                            style={{
+                              fontSize: 10,
+                              wordBreak: 'break-word',
+                              overflowWrap: 'break-word',
+                            }}
+                          >
+                            {appt.serviceName}
+                          </div>
+                        )}
+                        {height >= 62 && (
+                          <div className="opacity-75 mt-0.5" style={{ fontSize: 10 }}>
+                            {appt.duration}m · ${appt.price}
+                          </div>
                         )}
                       </div>
                     </div>

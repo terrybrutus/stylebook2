@@ -25,7 +25,7 @@ export default function DayView({ date, onSlotClick, onAppointmentClick }: Props
   const startHour = Math.floor(settings.workingHoursStart / 60);
   const endHour = Math.ceil(settings.workingHoursEnd / 60);
   const totalMinutes = (endHour - startHour) * 60;
-  const pixelsPerMinute = 1.5;
+  const pixelsPerMinute = 2.5;
   const gridHeight = totalMinutes * pixelsPerMinute;
 
   const containerRef = useRef<HTMLDivElement>(null);
@@ -125,7 +125,7 @@ export default function DayView({ date, onSlotClick, onAppointmentClick }: Props
             if (appt.phases && appt.phases.length > 0) {
               return appt.phases.map((ph) => {
                 const top = (ph.startTime - settings.workingHoursStart) * pixelsPerMinute;
-                const height = Math.max(ph.duration * pixelsPerMinute, 20);
+                const height = Math.max(ph.duration * pixelsPerMinute, 28);
                 const isProcessing = ph.type === 'processing';
                 return (
                   <div
@@ -161,7 +161,7 @@ export default function DayView({ date, onSlotClick, onAppointmentClick }: Props
             }
 
             const top = (appt.startTime - settings.workingHoursStart) * pixelsPerMinute;
-            const height = Math.max(appt.duration * pixelsPerMinute, 20);
+            const height = Math.max(appt.duration * pixelsPerMinute, 28);
             return (
               <div
                 key={appt.id}
