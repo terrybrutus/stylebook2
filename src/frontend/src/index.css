@@ -1,0 +1,190 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@font-face {
+  font-family: "General Sans";
+  src: url("/assets/fonts/GeneralSans.woff2") format("woff2");
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Fraunces";
+  src: url("/assets/fonts/Fraunces.woff2") format("woff2");
+  font-display: swap;
+}
+
+@layer base {
+  :root {
+    --font-display: Fraunces, serif;
+    --font-body: "General Sans", sans-serif;
+    --font-mono: monospace;
+    --radius: 0.625rem;
+
+    --background: 0.98 0 0;
+    --foreground: 0.15 0 0;
+    --card: 0.99 0 0;
+    --card-foreground: 0.15 0 0;
+    --popover: 1.0 0 0;
+    --popover-foreground: 0.15 0 0;
+
+    --primary: 0.15 0.02 266;
+    --primary-foreground: 0.98 0 0;
+
+    --secondary: 0.18 0.01 280;
+    --secondary-foreground: 0.95 0 0;
+    --muted: 0.94 0 0;
+    --muted-foreground: 0.5 0 0;
+
+    --accent: 0.63 0.14 189;
+    --accent-foreground: 0.99 0 0;
+
+    --destructive: 0.55 0.22 25;
+    --destructive-foreground: 0.98 0 0;
+
+    --border: 0.92 0 0;
+    --input: 0.96 0 0;
+    --ring: 0.63 0.14 189;
+
+    --chart-1: 0.63 0.14 189;
+    --chart-2: 0.65 0.18 40;
+    --chart-3: 0.6 0.15 100;
+    --chart-4: 0.55 0.22 25;
+    --chart-5: 0.75 0.1 150;
+
+    --sidebar: 0.99 0 0;
+    --sidebar-foreground: 0.15 0 0;
+    --sidebar-primary: 0.15 0.02 266;
+    --sidebar-primary-foreground: 0.98 0 0;
+    --sidebar-accent: 0.94 0 0;
+    --sidebar-accent-foreground: 0.18 0.01 280;
+    --sidebar-border: 0.92 0 0;
+    --sidebar-ring: 0.63 0.14 189;
+  }
+
+  .dark {
+    --background: 0.14 0.01 280;
+    --foreground: 0.96 0 0;
+    --card: 0.18 0.01 280;
+    --card-foreground: 0.96 0 0;
+    --popover: 0.22 0 0;
+    --popover-foreground: 0.96 0 0;
+
+    --primary: 0.96 0 0;
+    --primary-foreground: 0.14 0.01 280;
+
+    --secondary: 0.88 0 0;
+    --secondary-foreground: 0.14 0.01 280;
+    --muted: 0.28 0 0;
+    --muted-foreground: 0.65 0 0;
+
+    --accent: 0.63 0.14 189;
+    --accent-foreground: 0.14 0.01 280;
+
+    --destructive: 0.65 0.19 22;
+    --destructive-foreground: 0.96 0 0;
+
+    --border: 0.28 0 0;
+    --input: 0.28 0 0;
+    --ring: 0.63 0.14 189;
+
+    --chart-1: 0.63 0.14 189;
+    --chart-2: 0.65 0.18 40;
+    --chart-3: 0.6 0.15 100;
+    --chart-4: 0.55 0.22 25;
+    --chart-5: 0.75 0.1 150;
+
+    --sidebar: 0.18 0.01 280;
+    --sidebar-foreground: 0.96 0 0;
+    --sidebar-primary: 0.96 0 0;
+    --sidebar-primary-foreground: 0.14 0.01 280;
+    --sidebar-accent: 0.28 0 0;
+    --sidebar-accent-foreground: 0.88 0 0;
+    --sidebar-border: 0.28 0 0;
+    --sidebar-ring: 0.63 0.14 189;
+  }
+
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground font-body antialiased;
+  }
+}
+
+@layer utilities {
+  input,
+  textarea,
+  select {
+    font-size: 16px !important;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  .calendar-grid {
+    background-color: white;
+  }
+
+  .dark .calendar-grid {
+    background-color: oklch(var(--card));
+  }
+
+  .processing-stripe {
+    background-image: repeating-linear-gradient(
+      -45deg,
+      transparent,
+      transparent 4px,
+      rgba(0, 0, 0, 0.08) 4px,
+      rgba(0, 0, 0, 0.08) 8px
+    );
+  }
+
+  .appointment-block {
+    cursor: pointer;
+    position: relative;
+    z-index: 10;
+    overflow: hidden;
+    border-radius: 4px;
+    padding: 4px 6px;
+    line-height: 1.2;
+  }
+
+  .appointment-block:hover {
+    filter: brightness(0.92);
+    transition: filter 0.15s ease;
+  }
+
+  .time-slot {
+    position: relative;
+    cursor: pointer;
+    z-index: 1;
+  }
+
+  .time-slot:hover {
+    background-color: oklch(var(--accent) / 0.08);
+  }
+
+  .current-time-indicator {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background-color: oklch(var(--accent));
+    z-index: 20;
+    pointer-events: none;
+  }
+
+  .current-time-indicator::before {
+    content: "";
+    position: absolute;
+    left: -4px;
+    top: -4px;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background-color: oklch(var(--accent));
+  }
+
+  .transition-smooth {
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+}

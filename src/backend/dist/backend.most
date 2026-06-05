@@ -1,0 +1,135 @@
+// Version: 4.0.0
+type Appointment__607105078 =
+  {
+    clientName : Text;
+    date : ISODate__655725158;
+    durationMinutes : Nat;
+    id : Id__389469852;
+    notes : ?Text;
+    phases : ?[PhaseInstance__1048525623];
+    phone : ?Text;
+    price : Float;
+    serviceId : Id__389469852;
+    startTime : HHmm__836771740
+  };
+type Appointment__758232339 =
+  {
+    clientName : Text;
+    date : Text;
+    durationMinutes : Nat;
+    id : Text;
+    notes : ?Text;
+    phases : ?[PhaseInstance__795978742];
+    phone : ?Text;
+    price : Float;
+    serviceId : Text;
+    startTime : Text
+  };
+type Data__80296667<K, V> =
+  {var count : Nat__1040412405; kvs : [var ?(K, V)]};
+type HHmm__836771740 = Text;
+type ISODate__655725158 = Text;
+type Id__389469852 = Text;
+type Internal__41346355<K, V> =
+  {children : [var ?Node__1000929467<K, V>]; data : Data__80296667<K, V>};
+type Leaf__712614010<K, V> = {data : Data__80296667<K, V>};
+type Map__222667396<K, V> = Map__912772452<K, V>;
+type Map__709709801<K, V> =
+  {var root : Node__1000929467<K, V>; var size : Nat__1040412405};
+type Map__912772452<K, V> = Map__709709801<K, V>;
+type Nat__1040412405 = Nat__920180692;
+type Nat__920180692 = Nat;
+type NewActor__844250320 =
+  {
+    appointments : Map__222667396<Text, Appointment__758232339>;
+    services : Map__222667396<Text, Service__394702992>;
+    settings : Settings__382058339;
+    state :
+      {
+        var nextAppointmentId : Nat;
+        var nextServiceId : Nat;
+        var servicesSeeded : Bool
+      }
+  };
+type Node__1000929467<K, V> =
+  {#internal : Internal__41346355<K, V>; #leaf : Leaf__712614010<K, V>};
+type OldActor__93476354 = {};
+type PhaseDef__441963889 =
+  {
+    durationMinutes : Nat;
+    phaseLabel : Text;
+    phaseType : PhaseType__1011295419
+  };
+type PhaseDef__498661842 =
+  {
+    durationMinutes : Nat;
+    phaseLabel : Text;
+    phaseType : PhaseType__982707990
+  };
+type PhaseInstance__1048525623 =
+  {
+    durationMinutes : Nat;
+    phaseLabel : Text;
+    phaseType : PhaseType__982707990
+  };
+type PhaseInstance__795978742 =
+  {
+    durationMinutes : Nat;
+    phaseLabel : Text;
+    phaseType : PhaseType__1011295419
+  };
+type PhaseType__1011295419 = {#active; #processing};
+type PhaseType__982707990 = {#active; #processing};
+type Service__184160847 =
+  {
+    colorHex : Text;
+    finishingLabel : ?Text;
+    id : Id__389469852;
+    isMultiPhase : Bool;
+    name : Text;
+    phases : [PhaseDef__498661842];
+    price : Float
+  };
+type Service__394702992 =
+  {
+    colorHex : Text;
+    finishingLabel : ?Text;
+    id : Text;
+    isMultiPhase : Bool;
+    name : Text;
+    phases : [PhaseDef__441963889];
+    price : Float
+  };
+type Settings__382058339 =
+  {
+    var startWeekOnMonday : Bool;
+    var workingHoursEnd : Text;
+    var workingHoursStart : Text
+  };
+{
+  "20260601_000000_Init" : (_old : OldActor__93476354) -> NewActor__844250320
+}
+actor  {
+  stable appointments :
+    {
+      var root : Node__1000929467<Id__389469852, Appointment__607105078>;
+      var size : Nat__1040412405
+    };
+  stable services :
+    {
+      var root : Node__1000929467<Id__389469852, Service__184160847>;
+      var size : Nat__1040412405
+    };
+  stable settings :
+    {
+      var startWeekOnMonday : Bool;
+      var workingHoursEnd : HHmm__836771740;
+      var workingHoursStart : HHmm__836771740
+    };
+  stable state :
+    {
+      var nextAppointmentId : Nat;
+      var nextServiceId : Nat;
+      var servicesSeeded : Bool
+    }
+};

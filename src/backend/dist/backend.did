@@ -1,0 +1,116 @@
+type UpdateSettingsInput = 
+ record {
+   startWeekOnMonday: bool;
+   workingHoursEnd: HHmm;
+   workingHoursStart: HHmm;
+ };
+type UpdateServiceInput = 
+ record {
+   colorHex: text;
+   finishingLabel: opt text;
+   id: Id;
+   isMultiPhase: bool;
+   name: text;
+   phases: vec PhaseDef;
+   price: float64;
+ };
+type UpdateAppointmentInput = 
+ record {
+   clientName: text;
+   date: ISODate;
+   durationMinutes: nat;
+   id: Id;
+   notes: opt text;
+   phases: opt vec PhaseInstance;
+   phone: opt text;
+   price: float64;
+   serviceId: Id;
+   startTime: HHmm;
+ };
+type SettingsSnapshot = 
+ record {
+   startWeekOnMonday: bool;
+   workingHoursEnd: HHmm;
+   workingHoursStart: HHmm;
+ };
+type Service = 
+ record {
+   colorHex: text;
+   finishingLabel: opt text;
+   id: Id;
+   isMultiPhase: bool;
+   name: text;
+   phases: vec PhaseDef;
+   price: float64;
+ };
+type PhaseType = 
+ variant {
+   active;
+   processing;
+ };
+type PhaseInstance = 
+ record {
+   durationMinutes: nat;
+   phaseLabel: text;
+   phaseType: PhaseType;
+ };
+type PhaseDef = 
+ record {
+   durationMinutes: nat;
+   phaseLabel: text;
+   phaseType: PhaseType;
+ };
+type Id = text;
+type ISODate = text;
+type HHmm = text;
+type CreateServiceInput = 
+ record {
+   colorHex: text;
+   finishingLabel: opt text;
+   isMultiPhase: bool;
+   name: text;
+   phases: vec PhaseDef;
+   price: float64;
+ };
+type CreateAppointmentInput = 
+ record {
+   clientName: text;
+   date: ISODate;
+   durationMinutes: nat;
+   notes: opt text;
+   phases: opt vec PhaseInstance;
+   phone: opt text;
+   price: float64;
+   serviceId: Id;
+   startTime: HHmm;
+ };
+type Appointment = 
+ record {
+   clientName: text;
+   date: ISODate;
+   durationMinutes: nat;
+   id: Id;
+   notes: opt text;
+   phases: opt vec PhaseInstance;
+   phone: opt text;
+   price: float64;
+   serviceId: Id;
+   startTime: HHmm;
+ };
+service : {
+  createAppointment: (input: CreateAppointmentInput) -> (Appointment);
+  createService: (input: CreateServiceInput) -> (Service);
+  deleteAppointment: (id: Id) -> (bool);
+  deleteService: (id: Id) -> (bool);
+  getAppointment: (id: Id) -> (opt Appointment) query;
+  getAppointments: () -> (vec Appointment) query;
+  getAppointmentsByClient: (clientName: text) -> (vec Appointment) query;
+  getAppointmentsByDateRange: (startDate: ISODate, endDate: ISODate) ->
+   (vec Appointment) query;
+  getClientNames: () -> (vec text) query;
+  getServices: () -> (vec Service) query;
+  getSettings: () -> (SettingsSnapshot) query;
+  updateAppointment: (input: UpdateAppointmentInput) -> (opt Appointment);
+  updateService: (input: UpdateServiceInput) -> (opt Service);
+  updateSettings: (input: UpdateSettingsInput) -> ();
+}
