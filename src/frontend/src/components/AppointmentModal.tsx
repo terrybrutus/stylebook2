@@ -111,6 +111,9 @@ export default function AppointmentModal({
   } | null>(null);
   const [overlapConfirmed, setOverlapConfirmed] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [recurEnabled, setRecurEnabled] = useState(false);
+  const [recurWeeks, setRecurWeeks] = useState(1);
+  const [recurCount, setRecurCount] = useState(4);
   const [allClientNames, setAllClientNames] = useState<string[]>([]);
   const suggestRef = useRef<HTMLDivElement>(null);
   // Stable refs so the form-reset effect never re-runs due to array/object identity
@@ -156,6 +159,9 @@ export default function AppointmentModal({
     setOverlapConfirmed(false);
     setSubmitting(false);
     setConfirmDelete(false);
+    setRecurEnabled(false);
+    setRecurWeeks(1);
+    setRecurCount(4);
   }, [
     isOpen,
     appointment?.id,
@@ -222,10 +228,15 @@ export default function AppointmentModal({
 
   const totalDuration = form.durationHours * 60 + form.durationMinutes;
 
+  function capitalizeWords(s: string): string {
+    return s.replace(/(^|\s)\S/g, (c) => c.toUpperCase());
+  }
+
   function handleClientChange(val: string) {
-    setForm((f) => ({ ...f, clientName: val }));
-    const matches = val.length >= 1
-      ? allClientNames.filter((n) => n.toLowerCase().startsWith(val.toLowerCase()))
+    const capitalized = capitalizeWords(val);
+    setForm((f) => ({ ...f, clientName: capitalized }));
+    const matches = capitalized.length >= 1
+      ? allClientNames.filter((n) => n.toLowerCase().startsWith(capitalized.toLowerCase()))
       : allClientNames;
     setClientSuggestions(matches.slice(0, 8));
     setShowSuggestions(matches.length > 0);
@@ -391,8 +402,21 @@ export default function AppointmentModal({
       };
 
       if (mode === "create") {
+        // Create the first (or only) appointment
         const created = await createAppointment(input);
         addAppointment(created);
+        // Create recurring instances
+        if (recurEnabled && recurCount > 1) {
+          for (let i = 1; i < recurCount; i++) {
+            const d = new Date(`${input.date}T00:00:00`);
+            d.setDate(d.getDate() + i * recurWeeks * 7);
+            const recurDate = d.toISOString().slice(0, 10);
+            const recurPhases = input.phases.map((p) => ({ ...p }));
+            const recurInput = { ...input, date: recurDate, phases: recurPhases };
+            const recurCreated = await createAppointment(recurInput);
+            addAppointment(recurCreated);
+          }
+        }
       } else if (appointment) {
         const updated = await updateAppointment(appointment.id, input);
         storeUpdate(updated);
@@ -554,6 +578,7 @@ export default function AppointmentModal({
               }}
               placeholder="e.g. Sarah Jenkins"
               autoComplete="off"
+              autoCapitalize="words"
               className="text-base"
               data-ocid="appointment.client_input"
             />
@@ -828,6 +853,49 @@ export default function AppointmentModal({
             />
           </div>
         </div>
+
+        {/* Recurring — create mode only */}
+        {mode === "create" && (
+          <div className="px-5 py-3 border-t border-border/60">
+            <button
+              type="button"
+              className="flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors w-full"
+              onClick={() => setRecurEnabled((v) => !v)}
+              data-ocid="appointment.recur_toggle"
+            >
+              <span
+                className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 transition-colors ${recurEnabled ? "bg-accent border-accent" : "border-border"}`}
+              >
+                {recurEnabled && <span className="text-white text-[10px] font-bold">✓</span>}
+              </span>
+              Repeat this appointment
+            </button>
+            {recurEnabled && (
+              <div className="mt-2 flex items-center gap-2 flex-wrap text-sm">
+                <span className="text-muted-foreground">Every</span>
+                <select
+                  value={recurWeeks}
+                  onChange={(e) => setRecurWeeks(Number(e.target.value))}
+                  className="rounded border border-input bg-background px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-accent/50"
+                >
+                  {[1, 2, 3, 4, 6, 8].map((w) => (
+                    <option key={w} value={w}>{w} {w === 1 ? "week" : "weeks"}</option>
+                  ))}
+                </select>
+                <span className="text-muted-foreground">for</span>
+                <select
+                  value={recurCount}
+                  onChange={(e) => setRecurCount(Number(e.target.value))}
+                  className="rounded border border-input bg-background px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-accent/50"
+                >
+                  {[2, 3, 4, 6, 8, 12, 26, 52].map((n) => (
+                    <option key={n} value={n}>{n} appointments</option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Footer actions */}
         <div className="flex flex-col gap-2 px-5 py-4 border-t border-border flex-shrink-0">

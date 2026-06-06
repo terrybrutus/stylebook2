@@ -55,6 +55,11 @@ interface AppState {
   addClientContact: (contact: ClientContact) => void;
   updateClientContact: (name: string, patch: Partial<ClientContact>) => void;
   deleteClientContact: (name: string) => void;
+  renameClient: (oldName: string, newName: string) => void;
+
+  // Calendar cross-route date handoff
+  pendingCalendarDate: string | null;
+  setPendingCalendarDate: (date: string | null) => void;
 
   // Actions — Loading
   setLoading: (key: keyof LoadingFlags, value: boolean) => void;
@@ -80,6 +85,7 @@ export const useAppStore = create<AppState>()(
       appointmentHistory: [],
       appointmentFuture: [],
       pendingNavRoute: null,
+      pendingCalendarDate: null,
 
       setCurrentRoute: (route) => set({ currentRoute: route }),
       clearPendingNavRoute: () => set({ pendingNavRoute: null }),
@@ -166,6 +172,8 @@ export const useAppStore = create<AppState>()(
       updateSettings: (patch) =>
         set((state) => ({ settings: { ...state.settings, ...patch } })),
 
+      setPendingCalendarDate: (date) => set({ pendingCalendarDate: date }),
+
       // Client contact actions
       addClientContact: (contact) =>
         set((state) => ({
@@ -182,6 +190,15 @@ export const useAppStore = create<AppState>()(
       deleteClientContact: (name) =>
         set((state) => ({
           clientContacts: state.clientContacts.filter((c) => c.name !== name),
+        })),
+      renameClient: (oldName, newName) =>
+        set((state) => ({
+          appointments: state.appointments.map((a) =>
+            a.clientName === oldName ? { ...a, clientName: newName } : a,
+          ),
+          clientContacts: state.clientContacts.map((c) =>
+            c.name === oldName ? { ...c, name: newName } : c,
+          ),
         })),
 
       // Loading actions
