@@ -81,12 +81,13 @@ function mapBackendPhaseDef(p: BackendPhaseDef): Service["phases"][0] {
 
 function mapBackendPhaseInstance(
   p: BackendPhaseInstance,
+  startTime: string,
 ): Appointment["phases"][0] {
   return {
     name: p.phaseLabel,
     durationMinutes: Number(p.durationMinutes),
     phaseType: mapPhaseType(p.phaseType),
-    startTime: "",
+    startTime,
   };
 }
 
@@ -111,6 +112,19 @@ function mapBackendAppointment(
   serviceMap: Map<string, Service>,
 ): Appointment {
   const svc = serviceMap.get(a.serviceId);
+  // Recompute phase start times from appointment start since backend doesn't store them
+  const phases = (a.phases ?? []);
+  let cursor = (() => {
+    const [h, m] = a.startTime.split(":").map(Number);
+    return h * 60 + m;
+  })();
+  const mappedPhases = phases.map((p) => {
+    const hh = String(Math.floor(cursor / 60)).padStart(2, "0");
+    const mm = String(cursor % 60).padStart(2, "0");
+    const inst = mapBackendPhaseInstance(p, `${hh}:${mm}`);
+    cursor += Number(p.durationMinutes);
+    return inst;
+  });
   return {
     id: a.id,
     clientName: a.clientName,
@@ -122,7 +136,7 @@ function mapBackendAppointment(
     price: a.price,
     phoneNumber: a.phone,
     notes: a.notes,
-    phases: (a.phases ?? []).map(mapBackendPhaseInstance),
+    phases: mappedPhases,
     color: svc?.color ?? "#888888",
     createdAt: "",
     updatedAt: "",
@@ -161,8 +175,10 @@ export async function getAppointments(): Promise<Appointment[]> {
     const services = await getServices();
     const serviceMap = new Map(services.map((s) => [s.id, s]));
     const appts = await actor.getAppointments();
+    console.log("[StyleBook] ICP getAppointments: success, count=", appts.length);
     return appts.map((a) => mapBackendAppointment(a, serviceMap));
-  } catch {
+  } catch (err) {
+    console.error("[StyleBook] ICP getAppointments FAILED — falling back to localStorage:", err);
     return loadJSON<Appointment[]>(KEYS.appointments, []);
   }
 }
@@ -217,6 +233,7 @@ export async function createAppointment(
     const actor = getActor();
     const services = await getServices();
     const serviceMap = new Map(services.map((s) => [s.id, s]));
+    console.log("[StyleBook] ICP createAppointment: attempting...");
     const result = await actor.createAppointment({
       clientName: input.clientName,
       serviceId: input.serviceId,
@@ -231,8 +248,10 @@ export async function createAppointment(
           ? input.phases.map(toBackendPhaseInstance)
           : undefined,
     });
+    console.log("[StyleBook] ICP createAppointment: success, id=", result.id);
     return mapBackendAppointment(result, serviceMap);
-  } catch {
+  } catch (err) {
+    console.error("[StyleBook] ICP createAppointment FAILED — falling back to localStorage:", err);
     const all = loadJSON<Appointment[]>(KEYS.appointments, []);
     const now = new Date().toISOString();
     const appointment: Appointment = {
@@ -310,12 +329,14 @@ export async function getServices(): Promise<Service[]> {
   try {
     const actor = getActor();
     const services = await actor.getServices();
+    console.log("[StyleBook] ICP getServices: success, count=", services.length);
     if (services.length === 0) {
       await seedDefaultServices(actor);
       return DEFAULT_SERVICES;
     }
     return services.map(mapBackendService);
-  } catch {
+  } catch (err) {
+    console.error("[StyleBook] ICP getServices FAILED — falling back to localStorage:", err);
     const stored = loadJSON<Service[] | null>(KEYS.services, null);
     if (!stored) {
       saveJSON(KEYS.services, DEFAULT_SERVICES);
