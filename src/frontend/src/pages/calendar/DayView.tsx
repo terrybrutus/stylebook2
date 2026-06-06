@@ -10,6 +10,7 @@ import {
   timeToPixels,
 } from "../../lib/utils";
 import { hexToRgba } from "../../lib/utils";
+import * as api from "../../lib/api";
 import { useAppStore } from "../../store/useAppStore";
 import type { Appointment, AppointmentModalState } from "../../types";
 
@@ -207,7 +208,7 @@ export function DayView({ date, onModalChange }: Props) {
   });
 
   return (
-    <div className="flex flex-1 overflow-hidden" ref={containerRef} style={{ touchAction: 'pan-y', overscrollBehavior: 'none' }}>
+    <div className="flex w-full" ref={containerRef} style={{ minHeight: totalPx, touchAction: 'pan-y', overscrollBehavior: 'none' }}>
       {/* Time labels column */}
       <div
         className="w-14 flex-shrink-0 bg-background border-r border-border relative"
@@ -235,7 +236,7 @@ export function DayView({ date, onModalChange }: Props) {
 
       {/* Day column */}
       <div
-        className="flex-1 relative bg-white cursor-pointer overflow-hidden"
+        className="flex-1 relative bg-white cursor-pointer"
         style={{ height: totalPx }}
       >
         {/* Horizontal guide lines at every 30-min mark — on ALL columns including today */}
@@ -328,7 +329,9 @@ export function DayView({ date, onModalChange }: Props) {
             type="button"
             className="w-full text-left px-4 py-2.5 text-sm text-destructive hover:bg-muted transition-colors"
             onClick={() => {
-              deleteAppointment(contextMenu.appointment.id);
+              const id = contextMenu.appointment.id;
+              deleteAppointment(id);
+              api.deleteAppointment(id).catch(console.error);
               setContextMenu(null);
             }}
             data-ocid="appointment.delete_button"
