@@ -90,6 +90,7 @@ export default function AppointmentModal({
 }: Props) {
   const services = useAppStore(useShallow((s) => s.services));
   const appointments = useAppStore(useShallow((s) => s.appointments));
+  const clientContacts = useAppStore(useShallow((s) => s.clientContacts));
   const addAppointment = useAppStore((s) => s.addAppointment);
   const storeUpdate = useAppStore((s) => s.updateAppointment);
   const deleteAppointment = useAppStore((s) => s.deleteAppointment);
@@ -165,11 +166,15 @@ export default function AppointmentModal({
   ]);
 
   // Load client names and build history map once when the modal opens.
-  // Separated from the form-reset effect so neither causes the other to re-run.
+  // Merged with standalone clientContacts so manually-added clients appear too.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: clientContacts consumed via ref to avoid re-runs
   useEffect(() => {
     if (!isOpen) return;
     getClientNames().then((names) => {
-      setAllClientNames(names);
+      // Merge ICP/localStorage names with standalone client contacts
+      const contactNames = clientContacts.map((c) => c.name);
+      const merged = [...new Set([...names, ...contactNames])].sort();
+      setAllClientNames(merged);
       // Build client history map from current appointments ref
       const hist: Record<string, { serviceId: string; serviceName: string; lastDate: string }> = {};
       const sorted = [...appointmentsRef.current].sort(
@@ -219,15 +224,11 @@ export default function AppointmentModal({
 
   function handleClientChange(val: string) {
     setForm((f) => ({ ...f, clientName: val }));
-    if (val.length >= 1) {
-      const matches = allClientNames.filter((n) =>
-        n.toLowerCase().startsWith(val.toLowerCase()),
-      );
-      setClientSuggestions(matches.slice(0, 6));
-      setShowSuggestions(matches.length > 0);
-    } else {
-      setShowSuggestions(false);
-    }
+    const matches = val.length >= 1
+      ? allClientNames.filter((n) => n.toLowerCase().startsWith(val.toLowerCase()))
+      : allClientNames;
+    setClientSuggestions(matches.slice(0, 8));
+    setShowSuggestions(matches.length > 0);
   }
 
   function selectClientSuggestion(name: string) {
@@ -544,10 +545,13 @@ export default function AppointmentModal({
               id="appt-client"
               value={form.clientName}
               onChange={(e) => handleClientChange(e.target.value)}
-              onFocus={() =>
-                form.clientName.length >= 1 &&
-                setShowSuggestions(clientSuggestions.length > 0)
-              }
+              onFocus={() => {
+                const matches = form.clientName.length >= 1
+                  ? allClientNames.filter((n) => n.toLowerCase().startsWith(form.clientName.toLowerCase()))
+                  : allClientNames;
+                setClientSuggestions(matches.slice(0, 8));
+                setShowSuggestions(matches.length > 0);
+              }}
               placeholder="e.g. Sarah Jenkins"
               autoComplete="off"
               className="text-base"

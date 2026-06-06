@@ -209,18 +209,14 @@ export function DayView({ date, onModalChange }: Props) {
     }
   }
   const cascadeOffsets = ['0%', '20%', '40%'];
-  // Rotate hue of overlapping blocks that share the same color
-  const displayColors = rawBlocks.map((b) => b.color);
-  for (let i = 0; i < rawBlocks.length; i++) {
-    if (overlapOrder[i] === 0) continue;
-    for (let j = 0; j < i; j++) {
-      if (rawBlocks[j].topPx + rawBlocks[j].heightPx <= rawBlocks[i].topPx) continue;
-      if (displayColors[j] === displayColors[i]) {
-        displayColors[i] = hueRotate(displayColors[i], 55);
-        break;
-      }
-    }
-  }
+  // Assign visually distinct colors based on overlap order, rotating hue from
+  // the block's base (service) color. 120° steps give maximum separation.
+  const HUE_OFFSETS = [0, 120, 240, 60, 180, 300];
+  const displayColors = rawBlocks.map((b, i) => {
+    const order = overlapOrder[i];
+    if (order === 0) return b.color;
+    return hueRotate(b.color, HUE_OFFSETS[order % HUE_OFFSETS.length]);
+  });
   const blocks: RenderBlock[] = rawBlocks.map((b, i) => {
     const order = Math.min(overlapOrder[i], 2);
     return { ...b, color: displayColors[i], leftPct: cascadeOffsets[order], zIdx: (b.isProcessing ? 5 : 10) + order };

@@ -4,7 +4,11 @@ import {
   Clock,
   DollarSign,
   FileText,
+  Pencil,
+  Phone,
+  Plus,
   Search,
+  Trash2,
   Users,
   X,
 } from "lucide-react";
@@ -17,15 +21,144 @@ import {
   formatTime12,
 } from "../lib/utils";
 import { useAppStore } from "../store/useAppStore";
-import type { Appointment, Client } from "../types";
+import type { Appointment, Client, ClientContact } from "../types";
+
+// ─── Add/Edit Client Form ─────────────────────────────────────────────────────
+
+function ClientForm({
+  initial,
+  onSave,
+  onCancel,
+  existingNames,
+}: {
+  initial?: ClientContact;
+  onSave: (contact: ClientContact) => void;
+  onCancel: () => void;
+  existingNames: string[];
+}) {
+  const [name, setName] = useState(initial?.name ?? "");
+  const [phone, setPhone] = useState(initial?.phone ?? "");
+  const [notes, setNotes] = useState(initial?.notes ?? "");
+  const isEdit = !!initial;
+
+  const nameConflict = !isEdit && existingNames.includes(name.trim());
+
+  function handleSave() {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    onSave({ name: trimmed, phone: phone.trim() || undefined, notes: notes.trim() || undefined });
+  }
+
+  return (
+    <div className="flex flex-col h-full" data-ocid="clients.form.page">
+      <div className="px-4 pt-5 pb-4 border-b border-border bg-card flex items-center gap-3">
+        <button
+          type="button"
+          onClick={onCancel}
+          className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-muted transition-colors"
+          aria-label="Cancel"
+        >
+          <X size={18} />
+        </button>
+        <h1 className="text-lg font-semibold flex-1">{isEdit ? "Edit Client" : "New Client"}</h1>
+        <button
+          type="button"
+          onClick={handleSave}
+          disabled={!name.trim() || nameConflict}
+          className="px-4 py-1.5 rounded-lg bg-accent text-accent-foreground text-sm font-semibold disabled:opacity-40 transition-opacity"
+          data-ocid="clients.form.save_button"
+        >
+          Save
+        </button>
+      </div>
+
+      <div className="flex-1 overflow-auto px-4 py-4 flex flex-col gap-4">
+        <div>
+          <label htmlFor="client-name" className="text-sm font-medium block mb-1.5">
+            Name *
+          </label>
+          <input
+            id="client-name"
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            disabled={isEdit}
+            placeholder="e.g. Sarah Jenkins"
+            className="w-full rounded-md border border-input bg-background px-3 py-2 text-base focus:outline-none focus:ring-2 focus:ring-accent/50 disabled:opacity-60"
+            data-ocid="clients.form.name_input"
+          />
+          {nameConflict && (
+            <p className="text-xs text-destructive mt-1">A client with this name already exists.</p>
+          )}
+        </div>
+
+        <div>
+          <label htmlFor="client-phone" className="text-sm font-medium block mb-1.5">
+            Phone
+          </label>
+          <input
+            id="client-phone"
+            type="tel"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            placeholder="e.g. (555) 123-4567"
+            className="w-full rounded-md border border-input bg-background px-3 py-2 text-base focus:outline-none focus:ring-2 focus:ring-accent/50"
+            data-ocid="clients.form.phone_input"
+          />
+        </div>
+
+        <div>
+          <label htmlFor="client-notes" className="text-sm font-medium block mb-1.5">
+            Notes
+          </label>
+          <textarea
+            id="client-notes"
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            placeholder="Allergies, preferences, etc."
+            rows={3}
+            className="w-full rounded-md border border-input bg-background px-3 py-2 text-base focus:outline-none focus:ring-2 focus:ring-accent/50 resize-none"
+            data-ocid="clients.form.notes_input"
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Main Page ────────────────────────────────────────────────────────────────
+
+type Screen =
+  | { type: "list" }
+  | { type: "detail"; client: Client }
+  | { type: "add" }
+  | { type: "edit"; contact: ClientContact };
 
 export default function Clients() {
   const appointments = useAppStore(useShallow((s) => s.appointments));
+  const clientContacts = useAppStore(useShallow((s) => s.clientContacts));
+  const addClientContact = useAppStore((s) => s.addClientContact);
+  const updateClientContact = useAppStore((s) => s.updateClientContact);
+  const deleteClientContact = useAppStore((s) => s.deleteClientContact);
+
   const [search, setSearch] = useState("");
-  const [selectedClient, setSelectedClient] = useState<Client | null>(null);
+  const [screen, setScreen] = useState<Screen>({ type: "list" });
 
   const clients = useMemo<Client[]>(() => {
     const map = new Map<string, Client>();
+
+    // Seed standalone contacts first (may have 0 appointments)
+    for (const c of clientContacts) {
+      map.set(c.name, {
+        name: c.name,
+        appointmentCount: 0,
+        appointments: [],
+        phone: c.phone,
+        notes: c.notes,
+      });
+    }
+
+    // Merge in appointment-derived data
     for (const appt of appointments) {
       const name = appt.clientName;
       const existing = map.get(name);
@@ -48,20 +181,59 @@ export default function Clients() {
         }
       }
     }
-    return Array.from(map.values()).sort((a, b) =>
-      a.name.localeCompare(b.name),
-    );
-  }, [appointments]);
+    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }, [appointments, clientContacts]);
+
+  const existingNames = clients.map((c) => c.name);
 
   const filtered = search
     ? clients.filter((c) => c.name.toLowerCase().includes(search.toLowerCase()))
     : clients;
 
-  if (selectedClient) {
+  if (screen.type === "add") {
+    return (
+      <ClientForm
+        existingNames={existingNames}
+        onSave={(contact) => {
+          addClientContact(contact);
+          setScreen({ type: "list" });
+        }}
+        onCancel={() => setScreen({ type: "list" })}
+      />
+    );
+  }
+
+  if (screen.type === "edit") {
+    return (
+      <ClientForm
+        initial={screen.contact}
+        existingNames={existingNames}
+        onSave={(contact) => {
+          updateClientContact(screen.contact.name, { phone: contact.phone, notes: contact.notes });
+          setScreen({ type: "list" });
+        }}
+        onCancel={() => setScreen({ type: "list" })}
+      />
+    );
+  }
+
+  if (screen.type === "detail") {
+    const contact = clientContacts.find((c) => c.name === screen.client.name);
     return (
       <ClientDetail
-        client={selectedClient}
-        onBack={() => setSelectedClient(null)}
+        client={screen.client}
+        contact={contact}
+        onBack={() => setScreen({ type: "list" })}
+        onEdit={() => {
+          setScreen({
+            type: "edit",
+            contact: contact ?? { name: screen.client.name, phone: screen.client.phone, notes: screen.client.notes },
+          });
+        }}
+        onDelete={() => {
+          deleteClientContact(screen.client.name);
+          setScreen({ type: "list" });
+        }}
       />
     );
   }
@@ -72,11 +244,22 @@ export default function Clients() {
       <div className="px-4 pt-5 pb-3 border-b border-border bg-card">
         <div className="flex items-center justify-between mb-3">
           <h1 className="text-xl font-semibold">Clients</h1>
-          {clients.length > 0 && (
-            <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
-              {clients.length} total
-            </span>
-          )}
+          <div className="flex items-center gap-2">
+            {clients.length > 0 && (
+              <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
+                {clients.length} total
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={() => setScreen({ type: "add" })}
+              className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-accent text-accent-foreground text-xs font-semibold"
+              data-ocid="clients.add_button"
+            >
+              <Plus size={14} />
+              Add
+            </button>
+          </div>
         </div>
         <div className="relative">
           <Search
@@ -110,7 +293,7 @@ export default function Clients() {
             <p className="text-sm text-muted-foreground leading-relaxed">
               {search
                 ? `No clients match "${search}"`
-                : "Clients appear here automatically once you add appointments."}
+                : "Add clients manually or they appear automatically when you add appointments."}
             </p>
           </div>
         ) : (
@@ -120,7 +303,7 @@ export default function Clients() {
                 key={client.name}
                 client={client}
                 index={i + 1}
-                onSelect={() => setSelectedClient(client)}
+                onSelect={() => setScreen({ type: "detail", client })}
               />
             ))}
           </div>
@@ -129,6 +312,8 @@ export default function Clients() {
     </div>
   );
 }
+
+// ─── Client Row ───────────────────────────────────────────────────────────────
 
 function ClientRow({
   client,
@@ -140,14 +325,12 @@ function ClientRow({
   onSelect: () => void;
 }) {
   const totalSpent = client.appointments.reduce((sum, a) => sum + a.price, 0);
-  // Get initials for avatar
   const initials = client.name
     .split(" ")
     .map((n) => n[0])
     .slice(0, 2)
     .join("")
     .toUpperCase();
-  // Deterministic avatar color based on name
   const avatarColors = [
     "bg-[#e8f5e9] text-[#2e7d32]",
     "bg-[#e3f2fd] text-[#1565c0]",
@@ -157,8 +340,7 @@ function ClientRow({
     "bg-[#e0f7fa] text-[#006064]",
     "bg-[#fafafa] text-[#37474f]",
   ];
-  const colorClass =
-    avatarColors[client.name.charCodeAt(0) % avatarColors.length];
+  const colorClass = avatarColors[client.name.charCodeAt(0) % avatarColors.length];
 
   return (
     <button
@@ -167,48 +349,54 @@ function ClientRow({
       className="w-full flex items-center gap-3 px-4 py-3.5 border-b border-border bg-card hover:bg-muted/40 active:bg-muted/70 transition-colors text-left"
       data-ocid={`clients.item.${index}`}
     >
-      {/* Avatar */}
       <div
         className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-semibold ${colorClass}`}
       >
         {initials}
       </div>
 
-      {/* Info */}
       <div className="flex-1 min-w-0">
         <p className="font-semibold text-sm text-foreground">{client.name}</p>
         <p className="text-xs text-muted-foreground mt-0.5">
-          {client.appointmentCount} visit
-          {client.appointmentCount !== 1 ? "s" : ""}
-          {client.lastDate
-            ? ` · Last ${formatDate(client.lastDate, { month: "short", day: "numeric" })}`
-            : ""}
+          {client.appointmentCount > 0
+            ? `${client.appointmentCount} visit${client.appointmentCount !== 1 ? "s" : ""}${client.lastDate ? ` · Last ${formatDate(client.lastDate, { month: "short", day: "numeric" })}` : ""}`
+            : client.phone
+              ? client.phone
+              : "No appointments yet"}
         </p>
       </div>
 
-      {/* Right side */}
       <div className="flex items-center gap-2 flex-shrink-0">
-        <span className="text-sm font-medium text-accent">${totalSpent}</span>
+        {totalSpent > 0 && (
+          <span className="text-sm font-medium text-accent">${totalSpent}</span>
+        )}
         <ChevronRight size={16} className="text-muted-foreground" />
       </div>
     </button>
   );
 }
 
+// ─── Client Detail ────────────────────────────────────────────────────────────
+
 function ClientDetail({
   client,
+  contact,
   onBack,
+  onEdit,
+  onDelete,
 }: {
   client: Client;
+  contact?: ClientContact;
   onBack: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
 }) {
-  // Sort appointments newest first
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const sortedAppts = useMemo(
     () =>
       [...client.appointments].sort((a, b) => {
-        const dateCompare = b.date.localeCompare(a.date);
-        if (dateCompare !== 0) return dateCompare;
-        return b.startTime.localeCompare(a.startTime);
+        const d = b.date.localeCompare(a.date);
+        return d !== 0 ? d : b.startTime.localeCompare(a.startTime);
       }),
     [client.appointments],
   );
@@ -221,102 +409,146 @@ function ClientDetail({
     .join("")
     .toUpperCase();
 
+  const phone = contact?.phone ?? client.appointments.find((a) => a.phoneNumber)?.phoneNumber;
+  const notes = contact?.notes ?? client.notes;
+
   return (
     <div className="flex flex-col h-full" data-ocid="clients.detail.page">
-      {/* Header */}
       <div className="px-4 pt-5 pb-4 border-b border-border bg-card">
         <div className="flex items-center gap-3 mb-4">
           <button
             type="button"
             onClick={onBack}
             className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-muted transition-colors"
-            aria-label="Back to clients"
+            aria-label="Back"
             data-ocid="clients.detail.close_button"
           >
-            <X size={18} className="text-foreground" />
+            <X size={18} />
           </button>
-          <h1 className="text-lg font-semibold flex-1 min-w-0 truncate">
-            Client History
-          </h1>
+          <h1 className="text-lg font-semibold flex-1 min-w-0 truncate">Client Profile</h1>
+          <button
+            type="button"
+            onClick={onEdit}
+            className="p-2 rounded-lg hover:bg-muted transition-colors"
+            aria-label="Edit client"
+            data-ocid="clients.detail.edit_button"
+          >
+            <Pencil size={16} />
+          </button>
+          {confirmDelete ? (
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setConfirmDelete(false)}
+                className="px-2 py-1 text-xs rounded-lg border border-border hover:bg-muted"
+              >
+                Keep
+              </button>
+              <button
+                type="button"
+                onClick={onDelete}
+                className="px-2 py-1 text-xs rounded-lg bg-destructive text-destructive-foreground"
+                data-ocid="clients.detail.confirm_delete_button"
+              >
+                Delete
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setConfirmDelete(true)}
+              className="p-2 rounded-lg hover:bg-muted transition-colors text-destructive"
+              aria-label="Delete client"
+              data-ocid="clients.detail.delete_button"
+            >
+              <Trash2 size={16} />
+            </button>
+          )}
         </div>
 
-        {/* Client summary card */}
         <div className="flex items-center gap-3">
           <div className="w-14 h-14 rounded-full bg-accent/15 flex items-center justify-center flex-shrink-0">
             <span className="text-lg font-bold text-accent">{initials}</span>
           </div>
           <div className="flex-1 min-w-0">
-            <h2 className="text-xl font-bold text-foreground truncate">
-              {client.name}
-            </h2>
+            <h2 className="text-xl font-bold text-foreground truncate">{client.name}</h2>
             <p className="text-sm text-muted-foreground mt-0.5">
-              {client.appointmentCount} appointment
-              {client.appointmentCount !== 1 ? "s" : ""}
+              {client.appointmentCount} appointment{client.appointmentCount !== 1 ? "s" : ""}
             </p>
+            {phone && (
+              <a
+                href={`tel:${phone}`}
+                className="flex items-center gap-1 text-sm text-accent mt-0.5"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <Phone size={12} />
+                {phone}
+              </a>
+            )}
           </div>
-          <div className="text-right flex-shrink-0">
-            <p className="text-lg font-bold text-accent">${totalSpent}</p>
-            <p className="text-xs text-muted-foreground">total spent</p>
-          </div>
+          {totalSpent > 0 && (
+            <div className="text-right flex-shrink-0">
+              <p className="text-lg font-bold text-accent">${totalSpent}</p>
+              <p className="text-xs text-muted-foreground">total spent</p>
+            </div>
+          )}
         </div>
+
+        {notes && (
+          <div className="mt-3 p-2.5 rounded-lg bg-muted/50 text-xs text-muted-foreground leading-relaxed">
+            {notes}
+          </div>
+        )}
       </div>
 
-      {/* Appointment history */}
       <div className="flex-1 overflow-auto px-4 py-3">
-        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">
-          Appointment History
-        </p>
-        <div className="flex flex-col gap-3" data-ocid="clients.detail.list">
-          {sortedAppts.map((appt, i) => (
-            <AppointmentHistoryCard key={appt.id} appt={appt} index={i + 1} />
-          ))}
-        </div>
+        {sortedAppts.length > 0 ? (
+          <>
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">
+              Appointment History
+            </p>
+            <div className="flex flex-col gap-3" data-ocid="clients.detail.list">
+              {sortedAppts.map((appt, i) => (
+                <AppointmentHistoryCard key={appt.id} appt={appt} index={i + 1} />
+              ))}
+            </div>
+          </>
+        ) : (
+          <div className="flex flex-col items-center justify-center py-16 text-center">
+            <Calendar size={28} className="text-muted-foreground/40 mb-3" />
+            <p className="text-sm text-muted-foreground">No appointments yet</p>
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
-function AppointmentHistoryCard({
-  appt,
-  index,
-}: {
-  appt: Appointment;
-  index: number;
-}) {
+// ─── Appointment History Card ─────────────────────────────────────────────────
+
+function AppointmentHistoryCard({ appt, index }: { appt: Appointment; index: number }) {
   return (
     <div
       className="rounded-xl border border-border bg-card overflow-hidden"
       data-ocid={`clients.detail.item.${index}`}
     >
-      {/* Color strip + service header */}
       <div
         className="px-3 py-2.5 flex items-center gap-2"
         style={{ borderLeft: `4px solid ${appt.color}` }}
       >
         <div className="flex-1 min-w-0">
-          <p className="font-semibold text-sm text-foreground truncate">
-            {appt.serviceName}
-          </p>
+          <p className="font-semibold text-sm text-foreground truncate">{appt.serviceName}</p>
           <p className="text-xs text-muted-foreground mt-0.5">
-            {formatDate(appt.date, {
-              weekday: "short",
-              month: "short",
-              day: "numeric",
-              year: "numeric",
-            })}
+            {formatDate(appt.date, { weekday: "short", month: "short", day: "numeric", year: "numeric" })}
             {" · "}
             {formatTime12(appt.startTime)}
           </p>
         </div>
-        <span
-          className="text-sm font-bold flex-shrink-0"
-          style={{ color: appt.color }}
-        >
+        <span className="text-sm font-bold flex-shrink-0" style={{ color: appt.color }}>
           ${appt.price}
         </span>
       </div>
 
-      {/* Details row */}
       <div className="px-3 py-2 bg-muted/30 flex items-center gap-4 flex-wrap">
         <div className="flex items-center gap-1 text-xs text-muted-foreground">
           <Clock size={12} />
@@ -328,23 +560,17 @@ function AppointmentHistoryCard({
         </div>
         {appt.phoneNumber && (
           <div className="flex items-center gap-1 text-xs text-muted-foreground">
-            <Calendar size={12} />
+            <Phone size={12} />
             <span>{appt.phoneNumber}</span>
           </div>
         )}
       </div>
 
-      {/* Notes */}
       {appt.notes && (
         <div className="px-3 py-2 border-t border-border/60">
           <div className="flex items-start gap-1.5">
-            <FileText
-              size={12}
-              className="text-muted-foreground mt-0.5 flex-shrink-0"
-            />
-            <p className="text-xs text-muted-foreground leading-relaxed break-words">
-              {appt.notes}
-            </p>
+            <FileText size={12} className="text-muted-foreground mt-0.5 flex-shrink-0" />
+            <p className="text-xs text-muted-foreground leading-relaxed break-words">{appt.notes}</p>
           </div>
         </div>
       )}

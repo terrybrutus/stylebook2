@@ -1,11 +1,13 @@
-import { Link, useRouterState } from "@tanstack/react-router";
+import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import {
   CalendarCheck,
   CalendarDays,
   Moon,
+  Redo2,
   Scissors,
   Settings,
   Sun,
+  Undo2,
   Users,
 } from "lucide-react";
 import { useTheme } from "next-themes";
@@ -40,16 +42,32 @@ interface LayoutProps {
 export function Layout({ children }: LayoutProps) {
   const routerState = useRouterState();
   const pathname = routerState.location.pathname;
+  const navigate = useNavigate();
   const { theme, setTheme } = useTheme();
 
-  const { undo, redo, canUndo, canRedo } = useAppStore(
+  const { undo, redo, canUndo, canRedo, setCurrentRoute, pendingNavRoute, clearPendingNavRoute } = useAppStore(
     useShallow((s) => ({
       undo: s.undo,
       redo: s.redo,
       canUndo: s.appointmentHistory.length > 0,
       canRedo: s.appointmentFuture.length > 0,
+      setCurrentRoute: s.setCurrentRoute,
+      pendingNavRoute: s.pendingNavRoute,
+      clearPendingNavRoute: s.clearPendingNavRoute,
     })),
   );
+
+  // Track current route in store so history entries know where to navigate back to
+  useEffect(() => {
+    setCurrentRoute(pathname);
+  }, [pathname, setCurrentRoute]);
+
+  // Navigate when undo/redo sets a pending route
+  useEffect(() => {
+    if (!pendingNavRoute) return;
+    clearPendingNavRoute();
+    navigate({ to: pendingNavRoute as "/" });
+  }, [pendingNavRoute, navigate, clearPendingNavRoute]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -173,7 +191,7 @@ export function Layout({ children }: LayoutProps) {
             className="w-11 h-11 flex items-center justify-center rounded-full bg-card border border-border shadow transition-opacity"
             style={{ opacity: canUndo ? 1 : 0.4 }}
           >
-            ↩
+            <Undo2 size={18} />
           </button>
           <button
             type="button"
@@ -183,14 +201,15 @@ export function Layout({ children }: LayoutProps) {
             className="w-11 h-11 flex items-center justify-center rounded-full bg-card border border-border shadow transition-opacity"
             style={{ opacity: canRedo ? 1 : 0.4 }}
           >
-            ↪
+            <Redo2 size={18} />
           </button>
         </div>
       )}
 
-      {/* Mobile bottom tab bar */}
+      {/* Mobile bottom tab bar — safe-area-inset-bottom keeps it above iPhone home bar */}
       <nav
         className="md:hidden flex items-center bg-card border-t border-border flex-shrink-0"
+        style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
         data-ocid="nav.bottom_tabs"
       >
         {NAV_ITEMS.map((item) => {
