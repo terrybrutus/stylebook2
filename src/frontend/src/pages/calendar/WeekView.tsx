@@ -260,7 +260,8 @@ export function WeekView({ anchorDate, onModalChange, onDayClick }: Props) {
     const overlapOrder: number[] = raw.map(() => 0);
     for (let i = 0; i < raw.length; i++) {
       for (let j = i + 1; j < raw.length; j++) {
-        const a = raw[i], b = raw[j];
+        const a = raw[i];
+        const b = raw[j];
         if (b.topPx >= a.topPx + a.heightPx) break;
         overlapOrder[j] = Math.max(overlapOrder[j], overlapOrder[i] + 1);
       }
