@@ -212,7 +212,9 @@ export function hueRotate(hex: string, degrees: number): string {
   const c = (1 - Math.abs(2 * l - 1)) * s;
   const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
   const m = l - c / 2;
-  let r1: number, g1: number, b1: number;
+  let r1: number;
+  let g1: number;
+  let b1: number;
   if (h < 60)      { r1 = c; g1 = x; b1 = 0; }
   else if (h < 120){ r1 = x; g1 = c; b1 = 0; }
   else if (h < 180){ r1 = 0; g1 = c; b1 = x; }
