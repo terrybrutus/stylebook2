@@ -316,8 +316,10 @@ export function DayView({ date, onModalChange }: Props) {
     return hueRotate(b.color, HUE_OFFSETS[order % HUE_OFFSETS.length]);
   });
   const blocks: RenderBlock[] = rawBlocks.map((b, i) => {
-    const order = Math.min(overlapOrder[i], 2);
-    return { ...b, color: displayColors[i], leftPct: cascadeOffsets[order], zIdx: (b.isProcessing ? 5 : 10) + order };
+    // Use the appointment's first-block order for both color AND position,
+    // so all phases of the same appointment align in the same column.
+    const apptOrder = Math.min(apptColorOrder.get(b.appt.id) ?? 0, 2);
+    return { ...b, color: displayColors[i], leftPct: cascadeOffsets[apptOrder], zIdx: (b.isProcessing ? 5 : 10) + apptOrder };
   });
 
   return (

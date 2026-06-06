@@ -414,13 +414,15 @@ export function WeekView({ anchorDate, onModalChange, onDayClick }: Props) {
       return hueRotate(b.color, HUE_OFFSETS[order % HUE_OFFSETS.length]);
     });
     return raw.map((b, i) => {
-      const order = Math.min(overlapOrder[i], 2);
+      // Use the appointment's first-block order for both color AND position,
+      // so all phases of the same appointment align in the same column.
+      const apptOrder = Math.min(apptColorOrder.get(b.appt.id) ?? 0, 2);
       return {
         ...b,
         color: displayColors[i],
-        leftPct: offsets[order],
+        leftPct: offsets[apptOrder],
         rightPct: '0%',
-        zIdx: (b.isProcessing ? 5 : 10) + order,
+        zIdx: (b.isProcessing ? 5 : 10) + apptOrder,
       };
     });
   }
@@ -477,7 +479,7 @@ export function WeekView({ anchorDate, onModalChange, onDayClick }: Props) {
                 {dayNum}
               </span>
               {apptCount > 0 && (
-                <span className="text-[9px] leading-none text-muted-foreground mt-0.5">
+                <span className="inline-flex items-center justify-center min-w-[16px] h-4 px-1 rounded-full bg-accent text-accent-foreground text-[9px] font-bold leading-none mt-0.5">
                   {apptCount}
                 </span>
               )}

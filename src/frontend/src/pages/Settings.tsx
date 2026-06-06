@@ -404,7 +404,7 @@ export default function Settings() {
                           }`}
                         >
                           {selected.has(appt.id) && (
-                            <svg viewBox="0 0 10 8" className="w-2.5 h-2 fill-accent-foreground">
+                            <svg viewBox="0 0 10 8" className="w-2.5 h-2 fill-accent-foreground" aria-hidden="true">
                               <path d="M1 4l3 3 5-6" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
                             </svg>
                           )}
