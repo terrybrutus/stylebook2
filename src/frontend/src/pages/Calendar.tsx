@@ -6,6 +6,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Grid3x3,
+  List,
   Plus,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
@@ -14,6 +15,7 @@ import AppointmentModal from "../components/AppointmentModal";
 import QuickRebook from "../components/QuickRebook";
 import { useAppStore } from "../store/useAppStore";
 import type { AppointmentModalState, CalendarView } from "../types";
+import { AgendaView } from "./calendar/AgendaView";
 import { DayView } from "./calendar/DayView";
 import { MonthView } from "./calendar/MonthView";
 import { WeekView } from "./calendar/WeekView";
@@ -51,6 +53,9 @@ function formatDateHeader(view: CalendarView, dateStr: string): string {
   if (view === "week") {
     return d.toLocaleDateString("en-US", { month: "long", year: "numeric" });
   }
+  if (view === "agenda") {
+    return d.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+  }
   return d.toLocaleDateString("en-US", { month: "long", year: "numeric" });
 }
 
@@ -64,7 +69,9 @@ export default function Calendar() {
       ? "day"
       : pathname === "/calendar/month"
         ? "month"
-        : "week";
+        : pathname === "/calendar/agenda"
+          ? "agenda"
+          : "week";
 
   // Use pendingCalendarDate from store when navigating here from MonthView day click
   const [currentDate, setCurrentDate] = useState<string>(() => {
@@ -90,12 +97,14 @@ export default function Calendar() {
   const handlePrev = useCallback(() => {
     if (view === "day") setCurrentDate((d) => addDays(d, -1));
     else if (view === "week") setCurrentDate((d) => addWeeks(d, -1));
+    else if (view === "agenda") setCurrentDate((d) => addDays(d, -14));
     else setCurrentDate((d) => addMonths(d, -1));
   }, [view]);
 
   const handleNext = useCallback(() => {
     if (view === "day") setCurrentDate((d) => addDays(d, 1));
     else if (view === "week") setCurrentDate((d) => addWeeks(d, 1));
+    else if (view === "agenda") setCurrentDate((d) => addDays(d, 14));
     else setCurrentDate((d) => addMonths(d, 1));
   }, [view]);
 
@@ -155,6 +164,12 @@ export default function Calendar() {
       label: "Month",
       icon: <Grid3x3 size={14} />,
       to: "/calendar/month",
+    },
+    {
+      id: "agenda",
+      label: "Agenda",
+      icon: <List size={14} />,
+      to: "/calendar/agenda",
     },
   ];
 
@@ -254,6 +269,12 @@ export default function Calendar() {
             year={d.getFullYear()}
             month={d.getMonth()}
             onDayClick={handleDayClick}
+            onModalChange={handleModalChange}
+          />
+        )}
+        {view === "agenda" && (
+          <AgendaView
+            anchorDate={currentDate}
             onModalChange={handleModalChange}
           />
         )}

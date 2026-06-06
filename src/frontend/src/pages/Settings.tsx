@@ -1,21 +1,11 @@
-import { Calendar, Clock, Download, Moon, Palette, Share2, Sun } from "lucide-react";
+import { Calendar, Clock, Download, Moon, Palette, Share2, Sun, Trash2 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useState } from "react";
 import { useShallow } from "zustand/shallow";
 import * as api from "../lib/api";
+import { formatDate, formatTime12 } from "../lib/utils";
 import { useAppStore } from "../store/useAppStore";
-import type { Appointment } from "../types";
-
-// Format HH:MM to 12h display for the label preview
-function formatTime12h(time: string): string {
-  if (!time) return "";
-  const [hStr, mStr] = time.split(":");
-  const h = Number.parseInt(hStr, 10);
-  const m = mStr ?? "00";
-  const suffix = h >= 12 ? "PM" : "AM";
-  const h12 = h % 12 === 0 ? 12 : h % 12;
-  return `${h12}:${m} ${suffix}`;
-}
+import type { Appointment, WorkingDaySchedule } from "../types";
 
 function buildCSV(appointments: Appointment[]): string {
   const header = "Date,Time,Client,Service,Duration (min),Price,Phone,Notes";
@@ -76,12 +66,31 @@ function buildTextBackup(appointments: Appointment[]): string {
   return lines.join("\n");
 }
 
+const DAY_KEYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"] as const;
+type DayKey = typeof DAY_KEYS[number];
+const DAY_LABELS: Record<DayKey, string> = {
+  sun: "Sunday",
+  mon: "Monday",
+  tue: "Tuesday",
+  wed: "Wednesday",
+  thu: "Thursday",
+  fri: "Friday",
+  sat: "Saturday",
+};
+
 export default function Settings() {
   const settings = useAppStore(useShallow((s) => s.settings));
   const appointments = useAppStore(useShallow((s) => s.appointments));
   const updateSettings = useAppStore((s) => s.updateSettings);
+  const deleteAppointments = useAppStore((s) => s.deleteAppointments);
   const { setTheme } = useTheme();
   const [shareStatus, setShareStatus] = useState<string | null>(null);
+
+  // Multi-delete state
+  const [manageMode, setManageMode] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [deleteConfirm, setDeleteConfirm] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
 
   async function toggleBool(key: "startWeekOnMonday" | "darkMode") {
     const newVal = !settings[key];
@@ -120,15 +129,66 @@ export default function Settings() {
     URL.revokeObjectURL(url);
   }
 
-  async function handleTimeChange(
-    key: "workingHoursStart" | "workingHoursEnd",
-    value: string,
-  ) {
-    updateSettings({ [key]: value });
-    await api.updateSettings({ [key]: value });
+  // Per-day working hours helpers
+  function getDay(key: DayKey): WorkingDaySchedule {
+    return settings.workingDays?.[key] ?? {
+      enabled: key !== "sun" && key !== "sat",
+      start: settings.workingHoursStart,
+      end: settings.workingHoursEnd,
+    };
   }
 
-  const workingRange = `${formatTime12h(settings.workingHoursStart)} – ${formatTime12h(settings.workingHoursEnd)}`;
+  async function toggleDayEnabled(key: DayKey) {
+    const current = getDay(key);
+    const updated = { ...getDay(key), enabled: !current.enabled };
+    const newDays = { ...(settings.workingDays ?? defaultWorkingDays()), [key]: updated };
+    updateSettings({ workingDays: newDays });
+  }
+
+  async function handleDayTimeChange(key: DayKey, field: "start" | "end", value: string) {
+    const updated = { ...getDay(key), [field]: value };
+    const newDays = { ...(settings.workingDays ?? defaultWorkingDays()), [key]: updated };
+    updateSettings({ workingDays: newDays });
+  }
+
+  // Multi-delete
+  const filteredAppts = [...appointments]
+    .sort((a, b) => b.date.localeCompare(a.date) || a.startTime.localeCompare(b.startTime))
+    .filter((a) => {
+      if (!searchTerm.trim()) return true;
+      const q = searchTerm.toLowerCase();
+      return (
+        a.clientName.toLowerCase().includes(q) ||
+        a.serviceName.toLowerCase().includes(q) ||
+        a.date.includes(q)
+      );
+    });
+
+  function toggleSelect(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleSelectAll() {
+    if (selected.size === filteredAppts.length) {
+      setSelected(new Set());
+    } else {
+      setSelected(new Set(filteredAppts.map((a) => a.id)));
+    }
+  }
+
+  async function handleBulkDelete() {
+    const ids = [...selected];
+    deleteAppointments(ids);
+    await Promise.all(ids.map((id) => api.deleteAppointment(id).catch(console.error)));
+    setSelected(new Set());
+    setDeleteConfirm(false);
+    setManageMode(false);
+  }
 
   return (
     <div className="flex flex-col h-full" data-ocid="settings.page">
@@ -156,45 +216,84 @@ export default function Settings() {
             </div>
           </div>
 
-          {/* ── Working hours section ── */}
+          {/* ── Working schedule section ── */}
           <div>
-            <SectionHeader icon={<Clock size={15} />} title="Working Hours" />
+            <SectionHeader icon={<Clock size={15} />} title="Working Schedule" />
             <div className="bg-card rounded-xl border border-border overflow-hidden shadow-sm">
-              {/* Visual range preview */}
-              <div className="px-4 pt-3 pb-1">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-muted-foreground">
-                    Visible calendar range
-                  </span>
-                  <span className="text-xs font-semibold text-accent">
-                    {workingRange}
-                  </span>
-                </div>
-                {/* Range bar */}
-                <div className="mt-2 mb-1 relative h-1.5 rounded-full bg-muted overflow-hidden">
-                  <div
-                    className="absolute top-0 h-full rounded-full bg-accent/70"
-                    style={{
-                      left: `${(timeToMinutes(settings.workingHoursStart) / 1440) * 100}%`,
-                      width: `${((timeToMinutes(settings.workingHoursEnd) - timeToMinutes(settings.workingHoursStart)) / 1440) * 100}%`,
-                    }}
-                  />
-                </div>
+              <div className="divide-y divide-border/60">
+                {DAY_KEYS.map((key) => {
+                  const day = getDay(key);
+                  return (
+                    <div key={key} className="px-4 py-2.5 flex items-center gap-3">
+                      {/* Enable toggle */}
+                      <button
+                        type="button"
+                        onClick={() => toggleDayEnabled(key)}
+                        className="flex-shrink-0"
+                        aria-pressed={day.enabled}
+                        data-ocid={`settings.day_${key}_toggle`}
+                      >
+                        <Toggle checked={day.enabled} small />
+                      </button>
+                      {/* Day label */}
+                      <span className={`text-sm font-medium w-20 flex-shrink-0 ${day.enabled ? "text-foreground" : "text-muted-foreground"}`}>
+                        {DAY_LABELS[key]}
+                      </span>
+                      {/* Time pickers */}
+                      {day.enabled ? (
+                        <div className="flex items-center gap-1.5 flex-1">
+                          <input
+                            type="time"
+                            value={day.start}
+                            onChange={(e) => handleDayTimeChange(key, "start", e.target.value)}
+                            className="text-xs border border-input rounded-lg px-2 py-1 bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-accent/50 focus:border-accent transition-colors flex-1 min-w-0"
+                            style={{ fontSize: "14px" }}
+                            data-ocid={`settings.day_${key}_start`}
+                          />
+                          <span className="text-xs text-muted-foreground flex-shrink-0">–</span>
+                          <input
+                            type="time"
+                            value={day.end}
+                            onChange={(e) => handleDayTimeChange(key, "end", e.target.value)}
+                            className="text-xs border border-input rounded-lg px-2 py-1 bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-accent/50 focus:border-accent transition-colors flex-1 min-w-0"
+                            style={{ fontSize: "14px" }}
+                            data-ocid={`settings.day_${key}_end`}
+                          />
+                        </div>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">Off</span>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
+              {/* Calendar grid range note */}
+              <div className="border-t border-border px-4 py-2.5">
+                <p className="text-[11px] text-muted-foreground">
+                  Calendar grid still uses the global range below. The schedule above is used for booking warnings.
+                </p>
+              </div>
+              {/* Global range (still needed for calendar grid) */}
               <div className="border-t border-border">
                 <TimeRow
                   id="start-time"
-                  label="Start time"
+                  label="Grid start"
                   value={settings.workingHoursStart}
-                  onChange={(v) => handleTimeChange("workingHoursStart", v)}
+                  onChange={(v) => {
+                    updateSettings({ workingHoursStart: v });
+                    api.updateSettings({ workingHoursStart: v });
+                  }}
                   ocid="settings.start_time_input"
                 />
                 <div className="border-t border-border/60" />
                 <TimeRow
                   id="end-time"
-                  label="End time"
+                  label="Grid end"
                   value={settings.workingHoursEnd}
-                  onChange={(v) => handleTimeChange("workingHoursEnd", v)}
+                  onChange={(v) => {
+                    updateSettings({ workingHoursEnd: v });
+                    api.updateSettings({ workingHoursEnd: v });
+                  }}
                   ocid="settings.end_time_input"
                 />
               </div>
@@ -234,6 +333,135 @@ export default function Settings() {
                 <Toggle checked={settings.darkMode} />
               </button>
             </div>
+          </div>
+
+          {/* ── Appointments management ── */}
+          <div>
+            <div className="flex items-center justify-between px-1 mb-2">
+              <div className="flex items-center gap-1.5">
+                <span className="text-muted-foreground"><Trash2 size={15} /></span>
+                <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Manage Appointments
+                </h2>
+              </div>
+              {manageMode ? (
+                <button
+                  type="button"
+                  className="text-xs text-muted-foreground hover:text-foreground"
+                  onClick={() => { setManageMode(false); setSelected(new Set()); setSearchTerm(""); }}
+                >
+                  Cancel
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="text-xs text-accent hover:text-accent/80 font-medium"
+                  onClick={() => setManageMode(true)}
+                  data-ocid="settings.manage_appointments_button"
+                >
+                  Select & Delete
+                </button>
+              )}
+            </div>
+
+            {manageMode && (
+              <div className="bg-card rounded-xl border border-border overflow-hidden shadow-sm">
+                {/* Search + select all */}
+                <div className="flex items-center gap-2 px-3 py-2.5 border-b border-border">
+                  <input
+                    type="search"
+                    placeholder="Filter by client, service, date…"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="flex-1 text-sm bg-transparent outline-none placeholder:text-muted-foreground"
+                  />
+                  <button
+                    type="button"
+                    className="text-xs font-medium text-accent flex-shrink-0"
+                    onClick={toggleSelectAll}
+                  >
+                    {selected.size === filteredAppts.length && filteredAppts.length > 0 ? "Deselect all" : "Select all"}
+                  </button>
+                </div>
+
+                {/* Appointment list */}
+                <div className="max-h-72 overflow-auto divide-y divide-border/50">
+                  {filteredAppts.length === 0 ? (
+                    <p className="text-sm text-muted-foreground text-center py-6">No appointments found</p>
+                  ) : (
+                    filteredAppts.map((appt) => (
+                      <button
+                        key={appt.id}
+                        type="button"
+                        className={`w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-muted/40 transition-colors ${selected.has(appt.id) ? "bg-accent/5" : ""}`}
+                        onClick={() => toggleSelect(appt.id)}
+                      >
+                        <div
+                          className={`w-4 h-4 rounded flex-shrink-0 border-2 flex items-center justify-center transition-colors ${
+                            selected.has(appt.id)
+                              ? "bg-accent border-accent"
+                              : "border-border"
+                          }`}
+                        >
+                          {selected.has(appt.id) && (
+                            <svg viewBox="0 0 10 8" className="w-2.5 h-2 fill-accent-foreground">
+                              <path d="M1 4l3 3 5-6" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+                            </svg>
+                          )}
+                        </div>
+                        <div
+                          className="w-1 self-stretch rounded-full flex-shrink-0"
+                          style={{ backgroundColor: appt.color }}
+                        />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">{appt.clientName}</p>
+                          <p className="text-xs text-muted-foreground truncate">{appt.serviceName}</p>
+                        </div>
+                        <div className="text-right flex-shrink-0">
+                          <p className="text-xs text-muted-foreground">{formatDate(appt.date, { month: "short", day: "numeric" })}</p>
+                          <p className="text-xs text-muted-foreground">{formatTime12(appt.startTime)}</p>
+                        </div>
+                      </button>
+                    ))
+                  )}
+                </div>
+
+                {/* Delete selected button */}
+                {selected.size > 0 && (
+                  <div className="border-t border-border p-3">
+                    {deleteConfirm ? (
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm text-destructive flex-1">Delete {selected.size} appointment{selected.size !== 1 ? "s" : ""}?</p>
+                        <button
+                          type="button"
+                          className="px-3 py-1.5 bg-destructive text-destructive-foreground rounded-lg text-xs font-medium"
+                          onClick={handleBulkDelete}
+                          data-ocid="settings.confirm_delete_button"
+                        >
+                          Delete
+                        </button>
+                        <button
+                          type="button"
+                          className="px-3 py-1.5 border border-border rounded-lg text-xs"
+                          onClick={() => setDeleteConfirm(false)}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        className="w-full py-2 bg-destructive/10 text-destructive rounded-lg text-sm font-medium hover:bg-destructive/20 transition-colors"
+                        onClick={() => setDeleteConfirm(true)}
+                        data-ocid="settings.delete_selected_button"
+                      >
+                        Delete {selected.size} selected
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* ── Data & Backup section ── */}
@@ -295,12 +523,19 @@ export default function Settings() {
   );
 }
 
-// ─── Sub-components ───────────────────────────────────────────────────────────
-
-function timeToMinutes(time: string): number {
-  const [h, m] = time.split(":").map(Number);
-  return (h ?? 0) * 60 + (m ?? 0);
+function defaultWorkingDays() {
+  return {
+    sun: { enabled: false, start: "08:00", end: "19:00" },
+    mon: { enabled: true, start: "08:00", end: "19:00" },
+    tue: { enabled: true, start: "08:00", end: "19:00" },
+    wed: { enabled: true, start: "08:00", end: "19:00" },
+    thu: { enabled: true, start: "08:00", end: "19:00" },
+    fri: { enabled: true, start: "08:00", end: "19:00" },
+    sat: { enabled: false, start: "08:00", end: "19:00" },
+  };
 }
+
+// ─── Sub-components ───────────────────────────────────────────────────────────
 
 function SectionHeader({
   icon,
@@ -350,16 +585,20 @@ function ToggleRow({
   );
 }
 
-function Toggle({ checked }: { checked: boolean }) {
+function Toggle({ checked, small }: { checked: boolean; small?: boolean }) {
+  const w = small ? "w-8 h-5" : "w-11 h-6";
+  const dot = small ? "w-[14px] h-[14px]" : "w-[18px] h-[18px]";
+  const on = small ? "translate-x-[14px]" : "translate-x-[22px]";
+  const off = small ? "translate-x-[3px]" : "translate-x-[3px]";
   return (
     <div
-      className={`relative shrink-0 w-11 h-6 rounded-full transition-colors duration-200 ${
+      className={`relative shrink-0 ${w} rounded-full transition-colors duration-200 ${
         checked ? "bg-accent" : "bg-muted"
       }`}
     >
       <span
-        className={`absolute top-[3px] w-[18px] h-[18px] rounded-full bg-white shadow-sm transition-transform duration-200 ${
-          checked ? "translate-x-[22px]" : "translate-x-[3px]"
+        className={`absolute top-[3px] ${dot} rounded-full bg-white shadow-sm transition-transform duration-200 ${
+          checked ? on : off
         }`}
       />
     </div>

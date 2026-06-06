@@ -71,15 +71,30 @@ export interface AppointmentInput {
 }
 
 // Settings types
+export interface WorkingDaySchedule {
+  enabled: boolean;
+  start: string; // HH:MM
+  end: string;   // HH:MM
+}
+
 export interface Settings {
   startWeekOnMonday: boolean;
   darkMode: boolean;
   workingHoursStart: string; // HH:MM
   workingHoursEnd: string; // HH:MM
+  workingDays?: {
+    sun: WorkingDaySchedule;
+    mon: WorkingDaySchedule;
+    tue: WorkingDaySchedule;
+    wed: WorkingDaySchedule;
+    thu: WorkingDaySchedule;
+    fri: WorkingDaySchedule;
+    sat: WorkingDaySchedule;
+  };
 }
 
 // Calendar view types
-export type CalendarView = "day" | "week" | "month";
+export type CalendarView = "day" | "week" | "month" | "agenda";
 
 // UI state types
 export interface AppointmentModalState {

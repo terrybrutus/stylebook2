@@ -83,6 +83,16 @@ const calendarMonthRoute = createRoute({
   ),
 });
 
+const calendarAgendaRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/calendar/agenda",
+  component: () => (
+    <Suspense fallback={<PageLoader />}>
+      <CalendarPage />
+    </Suspense>
+  ),
+});
+
 const clientsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/clients",
@@ -119,6 +129,7 @@ const routeTree = rootRoute.addChildren([
   calendarDayRoute,
   calendarWeekRoute,
   calendarMonthRoute,
+  calendarAgendaRoute,
   clientsRoute,
   servicesRoute,
   settingsRoute,
