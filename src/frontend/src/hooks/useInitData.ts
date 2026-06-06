@@ -80,5 +80,17 @@ export function useInitData() {
     }
 
     void loadAll();
+
+    // Poll every 30s to sync appointments and services across devices/tabs
+    const pollId = setInterval(async () => {
+      try {
+        const appointments = await api.getAppointments();
+        useAppStore.getState().setAppointments(appointments);
+      } catch {
+        // Silently ignore — offline or canister unavailable
+      }
+    }, 30000);
+
+    return () => clearInterval(pollId);
   }, []);
 }

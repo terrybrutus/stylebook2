@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import type { Appointment, Service, Settings } from "../types";
+import type { Appointment, ClientContact, Service, Settings } from "../types";
 
 interface LoadingFlags {
   appointments: boolean;
@@ -8,18 +8,30 @@ interface LoadingFlags {
   settings: boolean;
 }
 
+interface HistoryEntry {
+  appointments: Appointment[];
+  route: string;
+}
+
 interface AppState {
   // Data
   appointments: Appointment[];
   services: Service[];
   settings: Settings;
+  clientContacts: ClientContact[];
 
   // Loading flags
   loading: LoadingFlags;
 
+  // Current route (set by Layout on navigation)
+  currentRoute: string;
+  setCurrentRoute: (route: string) => void;
+
   // Undo/redo history (not persisted)
-  appointmentHistory: Appointment[][];
-  appointmentFuture: Appointment[][];
+  appointmentHistory: HistoryEntry[];
+  appointmentFuture: HistoryEntry[];
+  pendingNavRoute: string | null;
+  clearPendingNavRoute: () => void;
   undo: () => void;
   redo: () => void;
 
@@ -39,6 +51,11 @@ interface AppState {
   setSettings: (settings: Settings) => void;
   updateSettings: (patch: Partial<Settings>) => void;
 
+  // Actions — Client Contacts
+  addClientContact: (contact: ClientContact) => void;
+  updateClientContact: (name: string, patch: Partial<ClientContact>) => void;
+  deleteClientContact: (name: string) => void;
+
   // Actions — Loading
   setLoading: (key: keyof LoadingFlags, value: boolean) => void;
 }
@@ -57,9 +74,15 @@ export const useAppStore = create<AppState>()(
       appointments: [],
       services: [],
       settings: DEFAULT_SETTINGS,
+      clientContacts: [],
       loading: { appointments: false, services: false, settings: false },
+      currentRoute: "/",
       appointmentHistory: [],
       appointmentFuture: [],
+      pendingNavRoute: null,
+
+      setCurrentRoute: (route) => set({ currentRoute: route }),
+      clearPendingNavRoute: () => set({ pendingNavRoute: null }),
 
       // Appointment actions
       setAppointments: (appointments) =>
@@ -68,7 +91,7 @@ export const useAppStore = create<AppState>()(
         set((state) => ({
           appointmentHistory: [
             ...state.appointmentHistory.slice(-20),
-            state.appointments,
+            { appointments: state.appointments, route: state.currentRoute },
           ],
           appointmentFuture: [],
           appointments: [...state.appointments, appointment],
@@ -77,7 +100,7 @@ export const useAppStore = create<AppState>()(
         set((state) => ({
           appointmentHistory: [
             ...state.appointmentHistory.slice(-20),
-            state.appointments,
+            { appointments: state.appointments, route: state.currentRoute },
           ],
           appointmentFuture: [],
           appointments: state.appointments.map((a) =>
@@ -88,7 +111,7 @@ export const useAppStore = create<AppState>()(
         set((state) => ({
           appointmentHistory: [
             ...state.appointmentHistory.slice(-20),
-            state.appointments,
+            { appointments: state.appointments, route: state.currentRoute },
           ],
           appointmentFuture: [],
           appointments: state.appointments.filter((a) => a.id !== id),
@@ -97,28 +120,29 @@ export const useAppStore = create<AppState>()(
       undo: () =>
         set((state) => {
           if (state.appointmentHistory.length === 0) return state;
-          const prev =
-            state.appointmentHistory[state.appointmentHistory.length - 1];
+          const entry = state.appointmentHistory[state.appointmentHistory.length - 1];
           return {
             appointmentHistory: state.appointmentHistory.slice(0, -1),
             appointmentFuture: [
-              state.appointments,
+              { appointments: state.appointments, route: state.currentRoute },
               ...state.appointmentFuture.slice(0, 19),
             ],
-            appointments: prev,
+            appointments: entry.appointments,
+            pendingNavRoute: entry.route,
           };
         }),
       redo: () =>
         set((state) => {
           if (state.appointmentFuture.length === 0) return state;
-          const next = state.appointmentFuture[0];
+          const entry = state.appointmentFuture[0];
           return {
             appointmentHistory: [
               ...state.appointmentHistory.slice(-19),
-              state.appointments,
+              { appointments: state.appointments, route: state.currentRoute },
             ],
             appointmentFuture: state.appointmentFuture.slice(1),
-            appointments: next,
+            appointments: entry.appointments,
+            pendingNavRoute: entry.route,
           };
         }),
 
@@ -142,6 +166,24 @@ export const useAppStore = create<AppState>()(
       updateSettings: (patch) =>
         set((state) => ({ settings: { ...state.settings, ...patch } })),
 
+      // Client contact actions
+      addClientContact: (contact) =>
+        set((state) => ({
+          clientContacts: state.clientContacts.some((c) => c.name === contact.name)
+            ? state.clientContacts
+            : [...state.clientContacts, contact],
+        })),
+      updateClientContact: (name, patch) =>
+        set((state) => ({
+          clientContacts: state.clientContacts.map((c) =>
+            c.name === name ? { ...c, ...patch } : c,
+          ),
+        })),
+      deleteClientContact: (name) =>
+        set((state) => ({
+          clientContacts: state.clientContacts.filter((c) => c.name !== name),
+        })),
+
       // Loading actions
       setLoading: (key, value) =>
         set((state) => ({ loading: { ...state.loading, [key]: value } })),
@@ -150,6 +192,7 @@ export const useAppStore = create<AppState>()(
       name: "stylebook-store",
       partialize: (state) => ({
         settings: state.settings,
+        clientContacts: state.clientContacts,
       }),
     },
   ),

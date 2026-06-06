@@ -97,4 +97,12 @@ export interface Client {
   lastDate?: string;
   appointmentCount: number;
   appointments: Appointment[];
+  phone?: string;
+  notes?: string;
+}
+
+export interface ClientContact {
+  name: string;
+  phone?: string;
+  notes?: string;
 }
