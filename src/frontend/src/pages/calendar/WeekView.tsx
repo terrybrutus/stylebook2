@@ -8,6 +8,7 @@ import {
   generateTimeSlots,
   getWeekDates,
   hexToRgba,
+  hueRotate,
 } from "../../lib/utils";
 import * as api from "../../lib/api";
 import { useAppStore } from "../../store/useAppStore";
@@ -268,12 +269,25 @@ export function WeekView({ anchorDate, onModalChange, onDayClick }: Props) {
       }
     }
     const offsets = ['0%', '20%', '40%'];
+    // Assign display colors — rotate hue if an overlapping block shares the same color
+    const displayColors = raw.map((b) => b.color);
+    for (let i = 0; i < raw.length; i++) {
+      if (overlapOrder[i] === 0) continue;
+      for (let j = 0; j < i; j++) {
+        if (raw[j].topPx + raw[j].heightPx <= raw[i].topPx) continue;
+        if (displayColors[j] === displayColors[i]) {
+          displayColors[i] = hueRotate(displayColors[i], 55);
+          break;
+        }
+      }
+    }
     return raw.map((b, i) => {
       const order = Math.min(overlapOrder[i], 2);
       return {
         ...b,
+        color: displayColors[i],
         leftPct: offsets[order],
-        rightPct: order > 0 ? '0%' : '0%',
+        rightPct: '0%',
         zIdx: (b.isProcessing ? 5 : 10) + order,
       };
     });
