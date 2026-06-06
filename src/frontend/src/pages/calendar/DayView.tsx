@@ -207,7 +207,7 @@ export function DayView({ date, onModalChange }: Props) {
   });
 
   return (
-    <div className="flex flex-1 overflow-auto" ref={containerRef} style={{ touchAction: 'pan-y', overscrollBehavior: 'none' }}>
+    <div className="flex flex-1 overflow-hidden" ref={containerRef} style={{ touchAction: 'pan-y', overscrollBehavior: 'none' }}>
       {/* Time labels column */}
       <div
         className="w-14 flex-shrink-0 bg-background border-r border-border relative"

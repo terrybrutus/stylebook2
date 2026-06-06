@@ -10,7 +10,7 @@ import {
   getClientNames,
   updateAppointment,
 } from "../lib/api";
-import { doBlocksOverlap, formatDuration, getTodayString } from "../lib/utils";
+import { doBlocksOverlap, formatDate, formatDuration, getTodayString } from "../lib/utils";
 import { useAppStore } from "../store/useAppStore";
 import type {
   Appointment,
@@ -100,7 +100,7 @@ export default function AppointmentModal({
   const [clientSuggestions, setClientSuggestions] = useState<string[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [clientHistory, setClientHistory] = useState<
-    Record<string, { serviceId: string; serviceName: string }>
+    Record<string, { serviceId: string; serviceName: string; lastDate: string }>
   >({});
   const [showServiceBanner, setShowServiceBanner] = useState(false);
   const [pendingServiceId, setPendingServiceId] = useState<string | null>(null);
@@ -154,6 +154,7 @@ export default function AppointmentModal({
     setOverlapWarning(null);
     setOverlapConfirmed(false);
     setSubmitting(false);
+    setConfirmDelete(false);
   }, [
     isOpen,
     appointment?.id,
@@ -182,6 +183,7 @@ export default function AppointmentModal({
           hist[a.clientName] = {
             serviceId: a.serviceId,
             serviceName: a.serviceName,
+            lastDate: a.date,
           };
         }
       }
@@ -354,7 +356,7 @@ export default function AppointmentModal({
     return null;
   }
 
-  async function handleSubmit() {
+  async function handleSubmit(skipOverlapCheck = false) {
     if (
       !form.clientName.trim() ||
       !form.serviceId ||
@@ -363,7 +365,7 @@ export default function AppointmentModal({
     )
       return;
 
-    if (!overlapConfirmed) {
+    if (!overlapConfirmed && !skipOverlapCheck) {
       const overlap = checkOverlap();
       if (overlap) {
         setOverlapWarning(overlap);
@@ -510,7 +512,7 @@ export default function AppointmentModal({
                 onClick={() => {
                   setOverlapConfirmed(true);
                   setOverlapWarning(null);
-                  handleSubmit();
+                  handleSubmit(true);
                 }}
                 data-ocid="appointment.overlap_confirm"
               >
@@ -566,8 +568,9 @@ export default function AppointmentModal({
                   >
                     <span>{name}</span>
                     {clientHistory[name] && (
-                      <span className="text-xs text-muted-foreground">
-                        {clientHistory[name].serviceName}
+                      <span className="text-xs text-muted-foreground text-right">
+                        <span className="block">{clientHistory[name].serviceName}</span>
+                        <span className="block opacity-70">{formatDate(clientHistory[name].lastDate, { month: "short", day: "numeric" })}</span>
                       </span>
                     )}
                   </button>
