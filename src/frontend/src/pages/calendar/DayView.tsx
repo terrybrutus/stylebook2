@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useShallow } from "zustand/shallow";
 import {
   durationToPixels,
@@ -7,9 +7,10 @@ import {
   formatTime12,
   generateTimeSlots,
   getCurrentTimePixels,
+  hexToRgba,
+  hueRotate,
   timeToPixels,
 } from "../../lib/utils";
-import { hexToRgba } from "../../lib/utils";
 import * as api from "../../lib/api";
 import { useAppStore } from "../../store/useAppStore";
 import type { Appointment, AppointmentModalState } from "../../types";
@@ -62,12 +63,18 @@ function getPhaseStartMinutes(phase: { startTime: string }): number {
 }
 
 export function DayView({ date, onModalChange }: Props) {
-  const { settings, appointments, deleteAppointment } = useAppStore(
+  const { settings, allAppointments, deleteAppointment } = useAppStore(
     useShallow((s) => ({
       settings: s.settings,
-      appointments: s.appointments.filter((a) => a.date === date),
+      allAppointments: s.appointments,
       deleteAppointment: s.deleteAppointment,
     })),
+  );
+  // Filter outside selector — filter() creates a new array reference every call,
+  // which causes React #185 (useSyncExternalStore stale snapshot loop) if inside useShallow
+  const appointments = useMemo(
+    () => allAppointments.filter((a) => a.date === date),
+    [allAppointments, date],
   );
 
   const startHour = Number(settings.workingHoursStart.split(":")[0]);
@@ -202,9 +209,21 @@ export function DayView({ date, onModalChange }: Props) {
     }
   }
   const cascadeOffsets = ['0%', '20%', '40%'];
+  // Rotate hue of overlapping blocks that share the same color
+  const displayColors = rawBlocks.map((b) => b.color);
+  for (let i = 0; i < rawBlocks.length; i++) {
+    if (overlapOrder[i] === 0) continue;
+    for (let j = 0; j < i; j++) {
+      if (rawBlocks[j].topPx + rawBlocks[j].heightPx <= rawBlocks[i].topPx) continue;
+      if (displayColors[j] === displayColors[i]) {
+        displayColors[i] = hueRotate(displayColors[i], 55);
+        break;
+      }
+    }
+  }
   const blocks: RenderBlock[] = rawBlocks.map((b, i) => {
     const order = Math.min(overlapOrder[i], 2);
-    return { ...b, leftPct: cascadeOffsets[order], zIdx: (b.isProcessing ? 5 : 10) + order };
+    return { ...b, color: displayColors[i], leftPct: cascadeOffsets[order], zIdx: (b.isProcessing ? 5 : 10) + order };
   });
 
   return (
