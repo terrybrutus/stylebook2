@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useShallow } from "zustand/shallow";
 import {
   durationToPixels,
@@ -62,12 +62,18 @@ function getPhaseStartMinutes(phase: { startTime: string }): number {
 }
 
 export function DayView({ date, onModalChange }: Props) {
-  const { settings, appointments, deleteAppointment } = useAppStore(
+  const { settings, allAppointments, deleteAppointment } = useAppStore(
     useShallow((s) => ({
       settings: s.settings,
-      appointments: s.appointments.filter((a) => a.date === date),
+      allAppointments: s.appointments,
       deleteAppointment: s.deleteAppointment,
     })),
+  );
+  // Filter outside selector — filter() creates a new array reference every call,
+  // which causes React #185 (useSyncExternalStore stale snapshot loop) if inside useShallow
+  const appointments = useMemo(
+    () => allAppointments.filter((a) => a.date === date),
+    [allAppointments, date],
   );
 
   const startHour = Number(settings.workingHoursStart.split(":")[0]);

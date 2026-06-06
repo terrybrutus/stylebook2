@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useShallow } from "zustand/react/shallow";
+import { useShallow } from "zustand/shallow";
 import {
   dateToString,
   formatDuration,
@@ -287,18 +287,30 @@ export function WeekView({ anchorDate, onModalChange, onDayClick }: Props) {
     >
       {/* Day header row — sticky above the scroll area */}
       <div className="flex flex-shrink-0 border-b border-border bg-card">
-        {/* Spacer matching time label column */}
-        <div className="w-14 flex-shrink-0 border-r border-border" />
-        {visibleDates.map((date) => {
+        {/* Time column spacer — on mobile shows prev arrow */}
+        <div className="w-14 flex-shrink-0 border-r border-border flex items-center justify-center">
+          {isMobilePortrait && mobileStartIdx > 0 && (
+            <button
+              type="button"
+              className="w-full h-full flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
+              onClick={() => changeMobileStart(mobileStartIdx - 3)}
+              aria-label="Previous days"
+            >
+              <span className="text-base leading-none">‹</span>
+            </button>
+          )}
+        </div>
+        {visibleDates.map((date, i) => {
           const dateStr = dateToString(date);
           const isToday = dateStr === todayStr;
           const dayLabel = DAY_LABELS[date.getDay()];
           const dayNum = date.getDate();
+          const isLast = i === visibleDates.length - 1;
           return (
             <button
               key={dateStr}
               type="button"
-              className="flex-1 flex flex-col items-center justify-center py-1.5 border-r border-border cursor-pointer hover:bg-muted/30 transition-colors"
+              className="flex-1 flex flex-col items-center justify-center py-1.5 border-r border-border cursor-pointer hover:bg-muted/30 transition-colors relative"
               onClick={() => onDayClick?.(dateStr)}
               data-ocid={`week.day_header.${dayNum}`}
             >
@@ -317,35 +329,23 @@ export function WeekView({ anchorDate, onModalChange, onDayClick }: Props) {
               >
                 {dayNum}
               </span>
+              {/* Next arrow on last visible day — mobile only */}
+              {isMobilePortrait && isLast && mobileStartIdx + 3 < 7 && (
+                <div
+                  className="absolute right-0 top-0 bottom-0 flex items-center pr-0.5"
+                  onClick={(e) => { e.stopPropagation(); changeMobileStart(mobileStartIdx + 3); }}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => { if (e.key === 'Enter') changeMobileStart(mobileStartIdx + 3); }}
+                  aria-label="Next days"
+                >
+                  <span className="text-base leading-none text-muted-foreground">›</span>
+                </div>
+              )}
             </button>
           );
         })}
       </div>
-
-      {/* Dot indicators — mobile portrait only */}
-      {isMobilePortrait && (
-        <div className="flex justify-center gap-2 py-1.5 bg-background border-b border-border flex-shrink-0">
-          {weekDates.map((date, i) => {
-            const isVisible = i >= mobileStartIdx && i < mobileStartIdx + 3;
-            const isToday = dateToString(date) === todayStr;
-            return (
-              <button
-                key={dateToString(date)}
-                type="button"
-                onClick={() => changeMobileStart(Math.min(Math.max(i - 1, 0), 4))}
-                className={`rounded-full transition-all ${
-                  isVisible
-                    ? isToday
-                      ? 'w-2.5 h-2.5 bg-accent'
-                      : 'w-2 h-2 bg-foreground/60'
-                    : 'w-2 h-2 border border-foreground/30'
-                }`}
-                aria-label={`Go to day ${i + 1}`}
-              />
-            );
-          })}
-        </div>
-      )}
 
       {/* Scrollable time grid */}
       <div
