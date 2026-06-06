@@ -345,16 +345,14 @@ export function WeekView({ anchorDate, onModalChange, onDayClick }: Props) {
               </span>
               {/* Next arrow on last visible day — mobile only */}
               {isMobilePortrait && isLast && mobileStartIdx + 3 < 7 && (
-                <div
+                <button
+                  type="button"
                   className="absolute right-0 top-0 bottom-0 flex items-center pr-0.5"
                   onClick={(e) => { e.stopPropagation(); changeMobileStart(mobileStartIdx + 3); }}
-                  role="button"
-                  tabIndex={0}
-                  onKeyDown={(e) => { if (e.key === 'Enter') changeMobileStart(mobileStartIdx + 3); }}
                   aria-label="Next days"
                 >
                   <span className="text-base leading-none text-muted-foreground">›</span>
-                </div>
+                </button>
               )}
             </button>
           );
