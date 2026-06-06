@@ -212,8 +212,15 @@ export function DayView({ date, onModalChange }: Props) {
   // Assign visually distinct colors based on overlap order, rotating hue from
   // the block's base (service) color. 120° steps give maximum separation.
   const HUE_OFFSETS = [0, 120, 240, 60, 180, 300];
-  const displayColors = rawBlocks.map((b, i) => {
-    const order = overlapOrder[i];
+  // All blocks sharing the same appt.id must use the same display color.
+  // Use the overlapOrder of the appointment's first block for all its phases.
+  const apptColorOrder = new Map<string, number>();
+  for (let i = 0; i < rawBlocks.length; i++) {
+    const id = rawBlocks[i].appt.id;
+    if (!apptColorOrder.has(id)) apptColorOrder.set(id, overlapOrder[i]);
+  }
+  const displayColors = rawBlocks.map((b) => {
+    const order = apptColorOrder.get(b.appt.id) ?? 0;
     if (order === 0) return b.color;
     return hueRotate(b.color, HUE_OFFSETS[order % HUE_OFFSETS.length]);
   });
@@ -247,6 +254,15 @@ export function DayView({ date, onModalChange }: Props) {
             </div>
           );
         })}
+        {/* End-hour label */}
+        <div
+          className="absolute right-2 flex items-start"
+          style={{ top: totalPx - 8, height: 16 }}
+        >
+          <span className="text-[10px] leading-none text-muted-foreground font-medium">
+            {formatTime12(`${String(endHour).padStart(2, "0")}:00`)}
+          </span>
+        </div>
       </div>
 
       {/* Day column */}
@@ -299,6 +315,12 @@ export function DayView({ date, onModalChange }: Props) {
             onTouchEnd={handleTouchEnd}
           />
         ))}
+
+        {/* End-of-day boundary line + label */}
+        <div
+          className="absolute left-0 right-0 pointer-events-none border-t border-border/60"
+          style={{ top: totalPx }}
+        />
 
         {/* Current time indicator — today only */}
         {isToday && currentTimePx >= 0 && currentTimePx <= totalPx && (

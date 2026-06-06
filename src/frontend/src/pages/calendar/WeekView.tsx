@@ -272,8 +272,14 @@ export function WeekView({ anchorDate, onModalChange, onDayClick }: Props) {
     // Assign visually distinct colors based on overlap order, rotating hue from
     // the block's base (service) color. 120° steps give maximum separation.
     const HUE_OFFSETS = [0, 120, 240, 60, 180, 300];
-    const displayColors = raw.map((b, i) => {
-      const order = overlapOrder[i];
+    // All blocks sharing the same appt.id must use the same display color.
+    const apptColorOrder = new Map<string, number>();
+    for (let i = 0; i < raw.length; i++) {
+      const id = raw[i].appt.id;
+      if (!apptColorOrder.has(id)) apptColorOrder.set(id, overlapOrder[i]);
+    }
+    const displayColors = raw.map((b) => {
+      const order = apptColorOrder.get(b.appt.id) ?? 0;
       if (order === 0) return b.color;
       return hueRotate(b.color, HUE_OFFSETS[order % HUE_OFFSETS.length]);
     });
@@ -396,6 +402,12 @@ export function WeekView({ anchorDate, onModalChange, onDayClick }: Props) {
                 </div>
               );
             })}
+            {/* End-hour label */}
+            <div className="absolute right-2" style={{ top: totalPx - 8 }}>
+              <span className="text-[10px] leading-none text-muted-foreground font-medium">
+                {formatTime12(`${String(endHour).padStart(2, "0")}:00`)}
+              </span>
+            </div>
           </div>
 
           {/* Day columns */}
@@ -462,6 +474,12 @@ export function WeekView({ anchorDate, onModalChange, onDayClick }: Props) {
                     onTouchEnd={handleTouchEnd}
                   />
                 ))}
+
+                {/* End-of-day boundary line */}
+                <div
+                  className="absolute left-0 right-0 pointer-events-none border-t border-border/60"
+                  style={{ top: totalPx }}
+                />
 
                 {/* Current time red indicator — today only */}
                 {isToday && currentTimePx >= 0 && currentTimePx <= totalPx && (
