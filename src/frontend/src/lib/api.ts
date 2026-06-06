@@ -59,7 +59,11 @@ let _actorInstance: ActorInstance | null = null;
 
 function getActor(): ActorInstance {
   if (!_actorInstance) {
-    const canisterId = import.meta.env.VITE_CANISTER_ID_BACKEND as string;
+    // Caffeine injects canister IDs via CANISTER_* env vars (vite-plugin-environment)
+    const canisterId = (import.meta.env.CANISTER_BACKEND ?? import.meta.env.VITE_CANISTER_ID_BACKEND) as string;
+    if (!canisterId || canisterId === "undefined") {
+      throw new Error(`[StyleBook] CANISTER_BACKEND is not set — ICP unavailable`);
+    }
     _actorInstance = createActor(canisterId, noopUpload, noopDownload);
   }
   return _actorInstance;
