@@ -77,8 +77,15 @@ export function MonthView({ year, month, onDayClick, onModalChange }: Props) {
               onClick={() => onDayClick(dateStr)}
               data-ocid={`calendar.month.day.${i + 1}`}
             >
-              {/* Day number */}
-              <div className="flex justify-end">
+              {/* Day number + count */}
+              <div className="flex items-center justify-between px-0.5">
+                {dayAppts.length > 0 ? (
+                  <span className="text-[9px] font-semibold text-accent leading-none">
+                    {dayAppts.length}
+                  </span>
+                ) : (
+                  <span />
+                )}
                 <span
                   className={`text-xs font-medium w-6 h-6 flex items-center justify-center rounded-full ${
                     isToday

@@ -316,6 +316,7 @@ export function WeekView({ anchorDate, onModalChange, onDayClick }: Props) {
           const dayLabel = DAY_LABELS[date.getDay()];
           const dayNum = date.getDate();
           const isLast = i === visibleDates.length - 1;
+          const apptCount = allAppointments.filter((a) => a.date === dateStr).length;
           return (
             <button
               key={dateStr}
@@ -339,6 +340,11 @@ export function WeekView({ anchorDate, onModalChange, onDayClick }: Props) {
               >
                 {dayNum}
               </span>
+              {apptCount > 0 && (
+                <span className="text-[9px] leading-none text-muted-foreground mt-0.5">
+                  {apptCount}
+                </span>
+              )}
               {/* Next arrow on last visible day — mobile only */}
               {isMobilePortrait && isLast && mobileStartIdx + 3 < 7 && (
                 <button

@@ -1,5 +1,5 @@
-import { CalendarCheck, Plus, Scissors } from "lucide-react";
-import { useState } from "react";
+import { CalendarCheck, MessageSquare, Plus, Scissors, TrendingUp } from "lucide-react";
+import { useMemo, useState } from "react";
 import { useShallow } from "zustand/shallow";
 import AppointmentModal from "../components/AppointmentModal";
 import QuickRebook from "../components/QuickRebook";
@@ -9,6 +9,8 @@ import {
   formatPrice,
   formatTime12,
   getTodayString,
+  getWeekDates,
+  dateToString,
 } from "../lib/utils";
 import { useAppStore } from "../store/useAppStore";
 import type { Appointment } from "../types";
@@ -36,13 +38,36 @@ function findConflicts(appts: Appointment[]) {
 
 export default function Today() {
   const today = getTodayString();
-  const appointments = useAppStore(
-    useShallow((s) =>
-      s.appointments
+  const { allAppointments, settings } = useAppStore(
+    useShallow((s) => ({ allAppointments: s.appointments, settings: s.settings })),
+  );
+
+  const appointments = useMemo(
+    () =>
+      allAppointments
         .filter((a) => a.date === today)
         .sort((a, b) => a.startTime.localeCompare(b.startTime)),
-    ),
+    [allAppointments, today],
   );
+
+  // Week stats
+  const weekDates = useMemo(
+    () => getWeekDates(new Date(), settings.startWeekOnMonday).map(dateToString),
+    [settings.startWeekOnMonday],
+  );
+  const weekAppts = useMemo(
+    () => allAppointments.filter((a) => weekDates.includes(a.date)),
+    [allAppointments, weekDates],
+  );
+  const weekRevenue = weekAppts.reduce((s, a) => s + a.price, 0);
+
+  // Month stats
+  const monthPrefix = today.slice(0, 7);
+  const monthAppts = useMemo(
+    () => allAppointments.filter((a) => a.date.startsWith(monthPrefix)),
+    [allAppointments, monthPrefix],
+  );
+  const monthRevenue = monthAppts.reduce((s, a) => s + a.price, 0);
 
   const [modalState, setModalState] = useState<{
     isOpen: boolean;
@@ -110,9 +135,7 @@ export default function Today() {
           </button>
         </div>
         {appointments.length === 0 ? (
-          <p className="text-sm text-muted-foreground mt-0.5">
-            No appointments today
-          </p>
+          <p className="text-sm text-muted-foreground mt-0.5">No appointments today</p>
         ) : (
           <p className="text-sm text-muted-foreground mt-0.5">
             {appointments.length} appointment{appointments.length !== 1 ? "s" : ""} ·{" "}
@@ -125,22 +148,43 @@ export default function Today() {
 
       {/* Scrollable content */}
       <div className="flex-1 overflow-auto">
+
+        {/* Stats panel — week & month at a glance */}
+        <div className="px-4 pt-3 pb-1" data-ocid="today.stats">
+          <div className="flex items-center gap-1.5 mb-2">
+            <TrendingUp size={13} className="text-muted-foreground" />
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Revenue</span>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div className="rounded-xl border border-border bg-card px-3 py-2.5">
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wide">This Week</p>
+              <p className="text-lg font-bold text-foreground mt-0.5">${weekRevenue.toFixed(0)}</p>
+              <p className="text-[10px] text-muted-foreground mt-0.5">
+                {weekAppts.length} appointment{weekAppts.length !== 1 ? "s" : ""}
+              </p>
+            </div>
+            <div className="rounded-xl border border-border bg-card px-3 py-2.5">
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wide">This Month</p>
+              <p className="text-lg font-bold text-foreground mt-0.5">${monthRevenue.toFixed(0)}</p>
+              <p className="text-[10px] text-muted-foreground mt-0.5">
+                {monthAppts.length} appointment{monthAppts.length !== 1 ? "s" : ""}
+              </p>
+            </div>
+          </div>
+        </div>
+
         {/* Appointment list */}
-        <div className="px-4 py-4">
+        <div className="px-4 py-3">
           {appointments.length === 0 ? (
             <div
-              className="flex flex-col items-center justify-center py-14 text-center"
+              className="flex flex-col items-center justify-center py-10 text-center"
               data-ocid="today.empty_state"
             >
-              <div className="w-16 h-16 rounded-2xl bg-muted flex items-center justify-center mb-4">
-                <Scissors size={28} className="text-muted-foreground/50" />
+              <div className="w-14 h-14 rounded-2xl bg-muted flex items-center justify-center mb-3">
+                <Scissors size={24} className="text-muted-foreground/50" />
               </div>
-              <h2 className="text-base font-semibold mb-1">
-                No appointments today
-              </h2>
-              <p className="text-sm text-muted-foreground mb-5">
-                Tap + to add one.
-              </p>
+              <h2 className="text-base font-semibold mb-1">No appointments today</h2>
+              <p className="text-sm text-muted-foreground mb-4">Tap + to add one.</p>
               <button
                 type="button"
                 onClick={openCreate}
@@ -194,22 +238,13 @@ export default function Today() {
           </div>
         )}
 
-        {/* Quick Rebook section */}
-        {appointments.length > 0 && (
-          <div className="border-t border-border mt-2 pt-4">
-            <QuickRebook onRebook={handleRebook} />
-          </div>
-        )}
-
-        {/* Show Quick Rebook even on empty day if past clients exist */}
-        {appointments.length === 0 && (
-          <div className="border-t border-border">
-            <QuickRebook onRebook={handleRebook} />
-          </div>
-        )}
+        {/* Quick Rebook */}
+        <div className="border-t border-border mt-1">
+          <QuickRebook onRebook={handleRebook} />
+        </div>
       </div>
 
-      {/* FAB for mobile — only shown when list has items */}
+      {/* FAB — only when list has items */}
       {appointments.length > 0 && (
         <div className="fixed bottom-20 right-4 md:bottom-6 md:right-6 z-40">
           <button
@@ -226,11 +261,7 @@ export default function Today() {
 
       {/* Appointment Modal */}
       <AppointmentModal
-        key={
-          modalState.isOpen
-            ? `open-${rebookPrefill?.clientName ?? ""}`
-            : "closed"
-        }
+        key={modalState.isOpen ? `open-${rebookPrefill?.clientName ?? ""}` : "closed"}
         isOpen={modalState.isOpen}
         onClose={() => {
           closeModal();
@@ -247,6 +278,8 @@ export default function Today() {
   );
 }
 
+// ─── Appointment Card ─────────────────────────────────────────────────────────
+
 interface AppointmentCardProps {
   appointment: Appointment;
   index: number;
@@ -254,56 +287,64 @@ interface AppointmentCardProps {
 }
 
 function AppointmentCard({ appointment, index, onEdit }: AppointmentCardProps) {
+  const smsBody = encodeURIComponent(
+    `Hi ${appointment.clientName}, just a reminder about your ${appointment.serviceName} appointment on ${formatDate(appointment.date, { weekday: "long", month: "long", day: "numeric" })} at ${formatTime12(appointment.startTime)}. See you then! 💇`,
+  );
+
   return (
-    <button
-      type="button"
-      onClick={onEdit}
-      className="flex gap-3 p-4 rounded-xl border border-border bg-card shadow-xs hover:shadow-sm transition-all cursor-pointer text-left w-full group"
-      style={{ borderLeftColor: appointment.color, borderLeftWidth: 4 }}
-      data-ocid={`today.item.${index}`}
-    >
-      {/* Time column */}
-      <div className="flex flex-col items-start min-w-[58px] shrink-0">
-        <span className="text-sm font-bold text-foreground leading-tight">
-          {formatTime12(appointment.startTime)}
-        </span>
-        <span className="text-xs text-muted-foreground mt-0.5">
-          {formatDuration(appointment.durationMinutes)}
-        </span>
-      </div>
+    <div className="relative" data-ocid={`today.item.${index}`}>
+      <button
+        type="button"
+        onClick={onEdit}
+        className="flex gap-3 p-4 rounded-xl border border-border bg-card shadow-xs hover:shadow-sm transition-all cursor-pointer text-left w-full"
+        style={{ borderLeftColor: appointment.color, borderLeftWidth: 4 }}
+      >
+        {/* Time column */}
+        <div className="flex flex-col items-start min-w-[58px] shrink-0">
+          <span className="text-sm font-bold text-foreground leading-tight">
+            {formatTime12(appointment.startTime)}
+          </span>
+          <span className="text-xs text-muted-foreground mt-0.5">
+            {formatDuration(appointment.durationMinutes)}
+          </span>
+        </div>
 
-      {/* Divider dot */}
-      <div className="flex flex-col items-center pt-1 shrink-0">
-        <div
-          className="w-2 h-2 rounded-full mt-0.5"
-          style={{ backgroundColor: appointment.color }}
-        />
-        <div
-          className="w-px flex-1 mt-1"
-          style={{ backgroundColor: `${appointment.color}40` }}
-        />
-      </div>
+        {/* Divider dot */}
+        <div className="flex flex-col items-center pt-1 shrink-0">
+          <div className="w-2 h-2 rounded-full mt-0.5" style={{ backgroundColor: appointment.color }} />
+          <div className="w-px flex-1 mt-1" style={{ backgroundColor: `${appointment.color}40` }} />
+        </div>
 
-      {/* Content */}
-      <div className="flex-1 min-w-0">
-        <p className="font-bold text-sm leading-tight">
-          {appointment.clientName}
-        </p>
-        <p
-          className="text-sm text-muted-foreground mt-0.5 break-words"
-          style={{ wordBreak: "break-word", overflowWrap: "break-word" }}
-        >
-          {appointment.serviceName}
-        </p>
-        <p className="text-sm font-semibold text-accent mt-1">
-          ${formatPrice(appointment.price)}
-        </p>
-        {appointment.notes && (
-          <p className="text-xs text-muted-foreground mt-1.5 line-clamp-2 italic">
-            {appointment.notes}
+        {/* Content */}
+        <div className="flex-1 min-w-0 pr-8">
+          <p className="font-bold text-sm leading-tight">{appointment.clientName}</p>
+          <p className="text-sm text-muted-foreground mt-0.5 break-words" style={{ wordBreak: "break-word", overflowWrap: "break-word" }}>
+            {appointment.serviceName}
           </p>
-        )}
-      </div>
-    </button>
+          <p className="text-sm font-semibold text-accent mt-1">
+            ${formatPrice(appointment.price)}
+          </p>
+          {appointment.notes && (
+            <p className="text-xs text-muted-foreground mt-1.5 line-clamp-2 italic">
+              {appointment.notes}
+            </p>
+          )}
+        </div>
+      </button>
+
+      {/* SMS reminder — only if phone number exists */}
+      {appointment.phoneNumber && (
+        <a
+          href={`sms:${appointment.phoneNumber}&body=${smsBody}`}
+          className="absolute top-3 right-3 p-1.5 rounded-lg text-muted-foreground hover:text-accent hover:bg-accent/10 transition-colors"
+          aria-label="Send reminder text"
+          title="Send reminder text"
+          onClick={(e) => e.stopPropagation()}
+          data-ocid={`today.item.${index}.sms`}
+        >
+          <MessageSquare size={16} />
+        </a>
+      )}
+    </div>
   );
 }

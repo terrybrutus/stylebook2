@@ -5,14 +5,16 @@ import {
   Moon,
   Redo2,
   Scissors,
+  Search,
   Settings,
   Sun,
   Undo2,
   Users,
 } from "lucide-react";
 import { useTheme } from "next-themes";
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useShallow } from "zustand/shallow";
+import { GlobalSearch } from "./GlobalSearch";
 import { useAppStore } from "../store/useAppStore";
 
 interface NavItem {
@@ -44,6 +46,7 @@ export function Layout({ children }: LayoutProps) {
   const pathname = routerState.location.pathname;
   const navigate = useNavigate();
   const { theme, setTheme } = useTheme();
+  const [showSearch, setShowSearch] = useState(false);
 
   const { undo, redo, canUndo, canRedo, setCurrentRoute, pendingNavRoute, clearPendingNavRoute } = useAppStore(
     useShallow((s) => ({
@@ -102,6 +105,9 @@ export function Layout({ children }: LayoutProps) {
       className="flex flex-col h-screen bg-background text-foreground"
       data-ocid="app.root"
     >
+      {/* Global search overlay */}
+      {showSearch && <GlobalSearch onClose={() => setShowSearch(false)} />}
+
       {/* Header */}
       <header className="flex items-center justify-between px-4 py-3 bg-card border-b border-border shadow-xs flex-shrink-0">
         <div className="flex items-center gap-2">
@@ -110,6 +116,16 @@ export function Layout({ children }: LayoutProps) {
             StyleBook
           </span>
         </div>
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => setShowSearch(true)}
+            aria-label="Search"
+            className="p-2 rounded-full hover:bg-muted transition-colors"
+            data-ocid="header.search_button"
+          >
+            <Search size={18} className="text-foreground" />
+          </button>
         <button
           type="button"
           onClick={toggleTheme}
@@ -123,6 +139,7 @@ export function Layout({ children }: LayoutProps) {
             <Moon size={18} className="text-foreground" />
           )}
         </button>
+        </div>
       </header>
 
       {/* Body — sidebar on desktop, full-width on mobile */}

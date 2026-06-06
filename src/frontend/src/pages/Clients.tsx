@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useShallow } from "zustand/shallow";
+import * as api from "../lib/api";
 import {
   formatDate,
   formatDuration,
@@ -25,6 +26,10 @@ import type { Appointment, Client, ClientContact } from "../types";
 
 // ─── Add/Edit Client Form ─────────────────────────────────────────────────────
 
+function capitalizeWords(s: string): string {
+  return s.replace(/(^|\s)\S/g, (c) => c.toUpperCase());
+}
+
 function ClientForm({
   initial,
   onSave,
@@ -32,7 +37,7 @@ function ClientForm({
   existingNames,
 }: {
   initial?: ClientContact;
-  onSave: (contact: ClientContact) => void;
+  onSave: (contact: ClientContact, oldName?: string) => void;
   onCancel: () => void;
   existingNames: string[];
 }) {
@@ -41,12 +46,20 @@ function ClientForm({
   const [notes, setNotes] = useState(initial?.notes ?? "");
   const isEdit = !!initial;
 
-  const nameConflict = !isEdit && existingNames.includes(name.trim());
+  const trimmedName = name.trim();
+  const nameChanged = isEdit && trimmedName !== initial?.name;
+  const nameConflict = trimmedName !== initial?.name && existingNames.includes(trimmedName);
+
+  function handleNameChange(val: string) {
+    setName(capitalizeWords(val));
+  }
 
   function handleSave() {
-    const trimmed = name.trim();
-    if (!trimmed) return;
-    onSave({ name: trimmed, phone: phone.trim() || undefined, notes: notes.trim() || undefined });
+    if (!trimmedName || nameConflict) return;
+    onSave(
+      { name: trimmedName, phone: phone.trim() || undefined, notes: notes.trim() || undefined },
+      isEdit ? initial?.name : undefined,
+    );
   }
 
   return (
@@ -64,7 +77,7 @@ function ClientForm({
         <button
           type="button"
           onClick={handleSave}
-          disabled={!name.trim() || nameConflict}
+          disabled={!trimmedName || nameConflict}
           className="px-4 py-1.5 rounded-lg bg-accent text-accent-foreground text-sm font-semibold disabled:opacity-40 transition-opacity"
           data-ocid="clients.form.save_button"
         >
@@ -81,14 +94,17 @@ function ClientForm({
             id="client-name"
             type="text"
             value={name}
-            onChange={(e) => setName(e.target.value)}
-            disabled={isEdit}
+            onChange={(e) => handleNameChange(e.target.value)}
+            autoCapitalize="words"
             placeholder="e.g. Sarah Jenkins"
-            className="w-full rounded-md border border-input bg-background px-3 py-2 text-base focus:outline-none focus:ring-2 focus:ring-accent/50 disabled:opacity-60"
+            className="w-full rounded-md border border-input bg-background px-3 py-2 text-base focus:outline-none focus:ring-2 focus:ring-accent/50"
             data-ocid="clients.form.name_input"
           />
           {nameConflict && (
             <p className="text-xs text-destructive mt-1">A client with this name already exists.</p>
+          )}
+          {nameChanged && !nameConflict && (
+            <p className="text-xs text-muted-foreground mt-1">Renaming will update all their appointments.</p>
           )}
         </div>
 
@@ -140,6 +156,7 @@ export default function Clients() {
   const addClientContact = useAppStore((s) => s.addClientContact);
   const updateClientContact = useAppStore((s) => s.updateClientContact);
   const deleteClientContact = useAppStore((s) => s.deleteClientContact);
+  const renameClient = useAppStore((s) => s.renameClient);
 
   const [search, setSearch] = useState("");
   const [screen, setScreen] = useState<Screen>({ type: "list" });
@@ -208,8 +225,19 @@ export default function Clients() {
       <ClientForm
         initial={screen.contact}
         existingNames={existingNames}
-        onSave={(contact) => {
-          updateClientContact(screen.contact.name, { phone: contact.phone, notes: contact.notes });
+        onSave={(contact, oldName) => {
+          const prevName = oldName ?? screen.contact.name;
+          if (contact.name !== prevName) {
+            // Rename: update all appointments and the contact record
+            renameClient(prevName, contact.name);
+            // Persist renamed appointments to ICP asynchronously
+            const appts = useAppStore.getState().appointments.filter((a) => a.clientName === contact.name);
+            for (const a of appts) {
+              api.updateAppointment(a.id, { clientName: contact.name }).catch(console.error);
+            }
+          } else {
+            updateClientContact(prevName, { phone: contact.phone, notes: contact.notes });
+          }
           setScreen({ type: "list" });
         }}
         onCancel={() => setScreen({ type: "list" })}

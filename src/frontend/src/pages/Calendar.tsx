@@ -8,7 +8,7 @@ import {
   Grid3x3,
   Plus,
 } from "lucide-react";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useShallow } from "zustand/shallow";
 import AppointmentModal from "../components/AppointmentModal";
 import QuickRebook from "../components/QuickRebook";
@@ -66,7 +66,16 @@ export default function Calendar() {
         ? "month"
         : "week";
 
-  const [currentDate, setCurrentDate] = useState<string>(getTodayStr);
+  // Use pendingCalendarDate from store when navigating here from MonthView day click
+  const [currentDate, setCurrentDate] = useState<string>(() => {
+    const pending = useAppStore.getState().pendingCalendarDate;
+    return pending ?? getTodayStr();
+  });
+
+  // Clear the pending date after consuming it on mount
+  useEffect(() => {
+    useAppStore.getState().setPendingCalendarDate(null);
+  }, []);
   const [modalState, setModalState] = useState<AppointmentModalState>({
     isOpen: false,
     mode: "create",
@@ -74,9 +83,9 @@ export default function Calendar() {
   const [rebookPrefill, setRebookPrefill] = useState<{ clientName: string; serviceId: string } | null>(null);
 
   const appointments = useAppStore(useShallow((s) => s.appointments));
-  const dayRevenue = view === "day"
-    ? appointments.filter((a) => a.date === currentDate).reduce((sum, a) => sum + a.price, 0)
-    : null;
+  const dayAppts = view === "day" ? appointments.filter((a) => a.date === currentDate) : [];
+  const dayRevenue = view === "day" ? dayAppts.reduce((sum, a) => sum + a.price, 0) : null;
+  const dayCount = view === "day" ? dayAppts.length : null;
 
   const handlePrev = useCallback(() => {
     if (view === "day") setCurrentDate((d) => addDays(d, -1));
@@ -104,7 +113,9 @@ export default function Calendar() {
 
   const handleDayClick = useCallback(
     (date: string) => {
-      setCurrentDate(date);
+      // Store the date before navigating — the new route mounts a fresh Calendar
+      // component whose useState initializer reads it from the store
+      useAppStore.getState().setPendingCalendarDate(date);
       navigate({ to: "/calendar/day" });
     },
     [navigate],
@@ -203,8 +214,11 @@ export default function Calendar() {
           </Button>
         </div>
 
-        {/* Today shortcut + day revenue */}
+        {/* Today shortcut + stats */}
         <div className="flex items-center gap-2 ml-auto">
+          {dayCount !== null && dayCount > 0 && (
+            <span className="text-xs text-muted-foreground">{dayCount} appt{dayCount !== 1 ? "s" : ""}</span>
+          )}
           {dayRevenue !== null && dayRevenue > 0 && (
             <span className="text-xs font-semibold text-accent">${dayRevenue.toFixed(2)}</span>
           )}
@@ -212,7 +226,7 @@ export default function Calendar() {
             type="button"
             variant="outline"
             size="sm"
-            className="h-8 text-xs"
+            className={`h-8 text-xs ${currentDate === getTodayStr() ? "opacity-40 pointer-events-none" : ""}`}
             onClick={handleToday}
             data-ocid="calendar.jump_today_button"
           >
