@@ -1,8 +1,10 @@
-import { Calendar, Clock, Moon, Palette, Sun } from "lucide-react";
+import { Calendar, Clock, Download, Moon, Palette, Share2, Sun } from "lucide-react";
 import { useTheme } from "next-themes";
+import { useState } from "react";
 import { useShallow } from "zustand/shallow";
 import * as api from "../lib/api";
 import { useAppStore } from "../store/useAppStore";
+import type { Appointment } from "../types";
 
 // Format HH:MM to 12h display for the label preview
 function formatTime12h(time: string): string {
@@ -15,10 +17,71 @@ function formatTime12h(time: string): string {
   return `${h12}:${m} ${suffix}`;
 }
 
+function buildCSV(appointments: Appointment[]): string {
+  const header = "Date,Time,Client,Service,Duration (min),Price,Phone,Notes";
+  const rows = [...appointments]
+    .sort((a, b) => a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime))
+    .map((a) =>
+      [
+        a.date,
+        a.startTime,
+        `"${a.clientName.replace(/"/g, '""')}"`,
+        `"${a.serviceName.replace(/"/g, '""')}"`,
+        a.durationMinutes,
+        a.price,
+        a.phoneNumber ?? "",
+        `"${(a.notes ?? "").replace(/"/g, '""')}"`,
+      ].join(","),
+    );
+  return [header, ...rows].join("\n");
+}
+
+function buildTextBackup(appointments: Appointment[]): string {
+  const date = new Date().toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+  const lines: string[] = [];
+  lines.push(`StyleBook Backup — ${date}`);
+  lines.push(`Total appointments: ${appointments.length}`);
+  lines.push("");
+
+  const clientMap = new Map<string, Appointment[]>();
+  for (const a of appointments) {
+    const list = clientMap.get(a.clientName) ?? [];
+    list.push(a);
+    clientMap.set(a.clientName, list);
+  }
+
+  lines.push("=== CLIENTS ===");
+  for (const [name, appts] of [...clientMap.entries()].sort(([a], [b]) => a.localeCompare(b))) {
+    const total = appts.reduce((s, a) => s + a.price, 0);
+    const phone = appts.find((a) => a.phoneNumber)?.phoneNumber ?? "";
+    lines.push(`${name}${phone ? ` | ${phone}` : ""} | ${appts.length} visit${appts.length !== 1 ? "s" : ""} | $${total}`);
+  }
+  lines.push("");
+
+  lines.push("=== APPOINTMENTS ===");
+  const sorted = [...appointments].sort(
+    (a, b) => a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime),
+  );
+  for (const a of sorted) {
+    const parts = [a.date, a.startTime, a.clientName, a.serviceName, `$${a.price}`, `${a.durationMinutes}min`];
+    if (a.phoneNumber) parts.push(a.phoneNumber);
+    if (a.notes) parts.push(a.notes);
+    lines.push(parts.join(" | "));
+  }
+
+  return lines.join("\n");
+}
+
 export default function Settings() {
   const settings = useAppStore(useShallow((s) => s.settings));
+  const appointments = useAppStore(useShallow((s) => s.appointments));
   const updateSettings = useAppStore((s) => s.updateSettings);
   const { setTheme } = useTheme();
+  const [shareStatus, setShareStatus] = useState<string | null>(null);
 
   async function toggleBool(key: "startWeekOnMonday" | "darkMode") {
     const newVal = !settings[key];
@@ -27,6 +90,34 @@ export default function Settings() {
     if (key === "darkMode") {
       setTheme(newVal ? "dark" : "light");
     }
+  }
+
+  async function handleShareBackup() {
+    const text = buildTextBackup(appointments);
+    const title = `StyleBook Backup — ${appointments.length} appointments`;
+    if (navigator.share) {
+      try {
+        await navigator.share({ title, text });
+        setShareStatus("Shared!");
+      } catch {
+        // User cancelled — silent
+      }
+    } else {
+      await navigator.clipboard.writeText(text);
+      setShareStatus("Copied to clipboard!");
+    }
+    setTimeout(() => setShareStatus(null), 3000);
+  }
+
+  function handleDownloadCSV() {
+    const csv = buildCSV(appointments);
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `stylebook-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
   }
 
   async function handleTimeChange(
@@ -141,6 +232,45 @@ export default function Settings() {
                   </div>
                 </div>
                 <Toggle checked={settings.darkMode} />
+              </button>
+            </div>
+          </div>
+
+          {/* ── Data & Backup section ── */}
+          <div>
+            <SectionHeader icon={<Download size={15} />} title="Data & Backup" />
+            <div className="bg-card rounded-xl border border-border overflow-hidden shadow-sm flex flex-col divide-y divide-border">
+              <button
+                type="button"
+                onClick={handleShareBackup}
+                className="flex items-center gap-3 px-4 py-3.5 text-left hover:bg-muted/50 transition-colors"
+                data-ocid="settings.share_backup_button"
+              >
+                <span className="flex items-center justify-center w-8 h-8 rounded-lg bg-accent/10 text-accent flex-shrink-0">
+                  <Share2 size={16} />
+                </span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium">Share as Text</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {shareStatus ?? "Save to Notes, Messages, or email"}
+                  </p>
+                </div>
+              </button>
+              <button
+                type="button"
+                onClick={handleDownloadCSV}
+                className="flex items-center gap-3 px-4 py-3.5 text-left hover:bg-muted/50 transition-colors"
+                data-ocid="settings.download_csv_button"
+              >
+                <span className="flex items-center justify-center w-8 h-8 rounded-lg bg-accent/10 text-accent flex-shrink-0">
+                  <Download size={16} />
+                </span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium">Export CSV</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {appointments.length} appointment{appointments.length !== 1 ? "s" : ""} · opens in Excel/Sheets
+                  </p>
+                </div>
               </button>
             </div>
           </div>
