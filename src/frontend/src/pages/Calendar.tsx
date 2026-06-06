@@ -9,7 +9,10 @@ import {
   Plus,
 } from "lucide-react";
 import { useCallback, useState } from "react";
+import { useShallow } from "zustand/shallow";
 import AppointmentModal from "../components/AppointmentModal";
+import QuickRebook from "../components/QuickRebook";
+import { useAppStore } from "../store/useAppStore";
 import type { AppointmentModalState, CalendarView } from "../types";
 import { DayView } from "./calendar/DayView";
 import { MonthView } from "./calendar/MonthView";
@@ -68,6 +71,12 @@ export default function Calendar() {
     isOpen: false,
     mode: "create",
   });
+  const [rebookPrefill, setRebookPrefill] = useState<{ clientName: string; serviceId: string } | null>(null);
+
+  const appointments = useAppStore(useShallow((s) => s.appointments));
+  const dayRevenue = view === "day"
+    ? appointments.filter((a) => a.date === currentDate).reduce((sum, a) => sum + a.price, 0)
+    : null;
 
   const handlePrev = useCallback(() => {
     if (view === "day") setCurrentDate((d) => addDays(d, -1));
@@ -102,8 +111,13 @@ export default function Calendar() {
   );
 
   const handleOpenCreate = useCallback(() => {
-    setModalState({ isOpen: true, mode: "create", prefillDate: getTodayStr() });
-  }, []);
+    setModalState({ isOpen: true, mode: "create", prefillDate: currentDate });
+  }, [currentDate]);
+
+  const handleRebook = useCallback((clientName: string, serviceId: string) => {
+    setRebookPrefill({ clientName, serviceId });
+    setModalState({ isOpen: true, mode: "create", prefillDate: currentDate });
+  }, [currentDate]);
 
   const d = new Date(`${currentDate}T00:00:00`);
 
@@ -189,17 +203,22 @@ export default function Calendar() {
           </Button>
         </div>
 
-        {/* Today shortcut */}
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="h-8 text-xs ml-auto"
-          onClick={handleToday}
-          data-ocid="calendar.jump_today_button"
-        >
-          Today
-        </Button>
+        {/* Today shortcut + day revenue */}
+        <div className="flex items-center gap-2 ml-auto">
+          {dayRevenue !== null && dayRevenue > 0 && (
+            <span className="text-xs font-semibold text-accent">${dayRevenue.toFixed(2)}</span>
+          )}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-8 text-xs"
+            onClick={handleToday}
+            data-ocid="calendar.jump_today_button"
+          >
+            Today
+          </Button>
+        </div>
       </div>
 
       {/* Calendar view — scrollable */}
@@ -237,14 +256,24 @@ export default function Calendar() {
         <Plus size={24} />
       </button>
 
+      {/* Quick Rebook — day view only */}
+      {view === "day" && (
+        <div className="border-t border-border flex-shrink-0">
+          <QuickRebook onRebook={handleRebook} />
+        </div>
+      )}
+
       {/* Appointment modal */}
       <AppointmentModal
+        key={modalState.isOpen ? `open-${rebookPrefill?.clientName ?? ""}` : "closed"}
         isOpen={modalState.isOpen}
-        onClose={handleModalClose}
+        onClose={() => { handleModalClose(); setRebookPrefill(null); }}
         mode={modalState.mode}
         appointment={modalState.appointment}
         prefillDate={modalState.prefillDate}
         prefillTime={modalState.prefillTime}
+        prefillClientName={rebookPrefill?.clientName}
+        prefillServiceId={rebookPrefill?.serviceId}
       />
     </div>
   );

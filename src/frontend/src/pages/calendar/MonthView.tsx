@@ -1,7 +1,14 @@
+import { useEffect, useState } from "react";
 import { useShallow } from "zustand/shallow";
 import { dateToString, getMonthGrid, hexToRgba } from "../../lib/utils";
 import { useAppStore } from "../../store/useAppStore";
-import type { AppointmentModalState } from "../../types";
+import type { Appointment, AppointmentModalState } from "../../types";
+
+interface ContextMenu {
+  x: number;
+  y: number;
+  appointment: Appointment;
+}
 
 interface Props {
   year: number;
@@ -16,7 +23,16 @@ const DAY_NAMES_SUN = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 export function MonthView({ year, month, onDayClick, onModalChange }: Props) {
   const settings = useAppStore(useShallow((s) => s.settings));
   const appointments = useAppStore(useShallow((s) => s.appointments));
+  const deleteAppointment = useAppStore((s) => s.deleteAppointment);
   const todayStr = new Date().toISOString().slice(0, 10);
+  const [contextMenu, setContextMenu] = useState<ContextMenu | null>(null);
+
+  useEffect(() => {
+    if (!contextMenu) return;
+    function handler() { setContextMenu(null); }
+    document.addEventListener("click", handler);
+    return () => document.removeEventListener("click", handler);
+  }, [contextMenu]);
 
   const grid = getMonthGrid(year, month, settings.startWeekOnMonday);
   const dayNames = settings.startWeekOnMonday ? DAY_NAMES_MON : DAY_NAMES_SUN;
@@ -77,26 +93,20 @@ export function MonthView({ year, month, onDayClick, onModalChange }: Props) {
 
               {/* Appointment pills */}
               {dayAppts.slice(0, 3).map((appt) => (
-                <button
+                <MonthPill
                   key={appt.id}
-                  type="button"
-                  className="rounded px-1 py-0.5 text-[9px] font-medium truncate leading-tight cursor-pointer hover:opacity-90 text-left w-full"
-                  style={{
-                    backgroundColor: hexToRgba(appt.color, 0.75),
-                    color: "#222",
-                  }}
-                  onClick={(e) => {
+                  appt={appt}
+                  onEdit={(e) => {
                     e.stopPropagation();
-                    onModalChange({
-                      isOpen: true,
-                      mode: "edit",
-                      appointment: appt,
-                    });
+                    onModalChange({ isOpen: true, mode: "edit", appointment: appt });
                   }}
-                  data-ocid="appointment.pill"
-                >
-                  {appt.clientName}
-                </button>
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setContextMenu({ x: e.clientX, y: e.clientY, appointment: appt });
+                  }}
+                  onLongPress={(x, y) => setContextMenu({ x, y, appointment: appt })}
+                />
               ))}
               {dayAppts.length > 3 && (
                 <span className="text-[9px] text-muted-foreground px-1">
@@ -107,6 +117,70 @@ export function MonthView({ year, month, onDayClick, onModalChange }: Props) {
           );
         })}
       </div>
+      {/* Context menu */}
+      {contextMenu && (
+        <div
+          className="fixed z-50 bg-card border border-border rounded-xl shadow-xl overflow-hidden"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+          onClick={(e) => e.stopPropagation()}
+          onKeyDown={(e) => e.stopPropagation()}
+          role="menu"
+          tabIndex={-1}
+        >
+          <button
+            type="button"
+            className="w-full text-left px-4 py-2.5 text-sm hover:bg-muted transition-colors"
+            onClick={() => {
+              onModalChange({ isOpen: true, mode: "edit", appointment: contextMenu.appointment });
+              setContextMenu(null);
+            }}
+          >
+            Edit
+          </button>
+          <button
+            type="button"
+            className="w-full text-left px-4 py-2.5 text-sm text-destructive hover:bg-muted transition-colors"
+            onClick={() => {
+              deleteAppointment(contextMenu.appointment.id);
+              setContextMenu(null);
+            }}
+          >
+            Delete
+          </button>
+        </div>
+      )}
     </div>
+  );
+}
+
+function MonthPill({
+  appt,
+  onEdit,
+  onContextMenu,
+  onLongPress,
+}: {
+  appt: Appointment;
+  onEdit: (e: React.MouseEvent) => void;
+  onContextMenu: (e: React.MouseEvent) => void;
+  onLongPress: (x: number, y: number) => void;
+}) {
+  const timerRef = { current: null as ReturnType<typeof setTimeout> | null };
+  return (
+    <button
+      type="button"
+      className="rounded px-1 py-0.5 text-[9px] font-medium truncate leading-tight cursor-pointer hover:opacity-90 text-left w-full"
+      style={{ backgroundColor: hexToRgba(appt.color, 0.75), color: "#222" }}
+      onClick={onEdit}
+      onContextMenu={onContextMenu}
+      onTouchStart={(e) => {
+        const t = e.touches[0];
+        timerRef.current = setTimeout(() => onLongPress(t.clientX, t.clientY), 500);
+      }}
+      onTouchEnd={() => { if (timerRef.current) clearTimeout(timerRef.current); }}
+      onTouchMove={() => { if (timerRef.current) clearTimeout(timerRef.current); }}
+      data-ocid="appointment.pill"
+    >
+      {appt.clientName}
+    </button>
   );
 }
