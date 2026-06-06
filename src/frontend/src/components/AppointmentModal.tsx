@@ -171,8 +171,7 @@ export default function AppointmentModal({
     getClientNames().then((names) => {
       setAllClientNames(names);
       // Build client history map from current appointments ref
-      const hist: Record<string, { serviceId: string; serviceName: string }> =
-        {};
+      const hist: Record<string, { serviceId: string; serviceName: string; lastDate: string }> = {};
       const sorted = [...appointmentsRef.current].sort(
         (a, b) =>
           b.date.localeCompare(a.date) ||
@@ -841,7 +840,7 @@ export default function AppointmentModal({
             <Button
               type="button"
               className="flex-1 bg-accent hover:bg-accent/90 text-accent-foreground"
-              onClick={handleSubmit}
+              onClick={() => handleSubmit()}
               disabled={
                 submitting ||
                 !form.clientName.trim() ||
