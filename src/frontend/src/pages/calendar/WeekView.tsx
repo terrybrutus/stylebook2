@@ -9,6 +9,7 @@ import {
   getWeekDates,
   hexToRgba,
 } from "../../lib/utils";
+import * as api from "../../lib/api";
 import { useAppStore } from "../../store/useAppStore";
 import type { Appointment, AppointmentModalState } from "../../types";
 
@@ -496,7 +497,9 @@ export function WeekView({ anchorDate, onModalChange, onDayClick }: Props) {
             type="button"
             className="w-full text-left px-4 py-2.5 text-sm text-destructive hover:bg-muted transition-colors"
             onClick={() => {
-              deleteAppointment(contextMenu.appointment.id);
+              const id = contextMenu.appointment.id;
+              deleteAppointment(id);
+              api.deleteAppointment(id).catch(console.error);
               setContextMenu(null);
             }}
             data-ocid="appointment.delete_button"
