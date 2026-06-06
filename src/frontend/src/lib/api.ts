@@ -56,11 +56,22 @@ const noopDownload = async (
 
 type ActorInstance = ReturnType<typeof createActor>;
 let _actorInstance: ActorInstance | null = null;
+let _canisterId: string | null = null;
+
+/**
+ * Called by useInitData before any API calls.
+ * Caffeine sets backend_canister_id in /env.json at deploy time.
+ */
+export function initCanisterId(id: string): void {
+  _canisterId = id;
+  _actorInstance = null; // reset so next getActor() call uses the new ID
+}
 
 function getActor(): ActorInstance {
   if (!_actorInstance) {
-    // Caffeine injects canister IDs via CANISTER_* env vars (vite-plugin-environment)
-    const canisterId = (import.meta.env.CANISTER_BACKEND ?? import.meta.env.VITE_CANISTER_ID_BACKEND) as string;
+    const canisterId = _canisterId
+      ?? (import.meta.env.CANISTER_BACKEND as string | undefined)
+      ?? (import.meta.env.VITE_CANISTER_ID_BACKEND as string | undefined);
     if (!canisterId || canisterId === "undefined") {
       throw new Error("[StyleBook] CANISTER_BACKEND is not set — ICP unavailable");
     }

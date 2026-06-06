@@ -2,6 +2,22 @@ import { useEffect } from "react";
 import * as api from "../lib/api";
 import { useAppStore } from "../store/useAppStore";
 
+async function loadCanisterId(): Promise<void> {
+  try {
+    const res = await fetch("/env.json");
+    const env = await res.json() as Record<string, string>;
+    const id = env.backend_canister_id;
+    if (id && id !== "undefined") {
+      api.initCanisterId(id);
+      console.log("[StyleBook] Canister ID loaded from env.json:", id);
+    } else {
+      console.warn("[StyleBook] env.json has no valid backend_canister_id — ICP will be unavailable");
+    }
+  } catch (err) {
+    console.warn("[StyleBook] Failed to fetch env.json:", err);
+  }
+}
+
 /**
  * Module-level flag — survives component remounts.
  * Guarantees data is loaded exactly once per page session regardless of
@@ -26,6 +42,9 @@ export function useInitData() {
     _dataInitialized = true;
 
     async function loadAll() {
+      // Fetch env.json to get canister ID before any ICP calls
+      await loadCanisterId();
+
       // Load services first (needed for appointments)
       useAppStore.getState().setLoading("services", true);
       try {
