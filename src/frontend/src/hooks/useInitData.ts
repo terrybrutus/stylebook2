@@ -85,7 +85,7 @@ export function useInitData() {
     const pollId = setInterval(async () => {
       try {
         const appointments = await api.getAppointments();
-        useAppStore.getState().setAppointments(appointments);
+        useAppStore.getState().syncAppointments(appointments);
       } catch {
         // Silently ignore — offline or canister unavailable
       }

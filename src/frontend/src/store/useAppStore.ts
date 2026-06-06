@@ -37,6 +37,7 @@ interface AppState {
 
   // Actions — Appointments
   setAppointments: (appointments: Appointment[]) => void;
+  syncAppointments: (appointments: Appointment[]) => void;
   addAppointment: (appointment: Appointment) => void;
   updateAppointment: (appointment: Appointment) => void;
   deleteAppointment: (id: string) => void;
@@ -93,6 +94,7 @@ export const useAppStore = create<AppState>()(
       // Appointment actions
       setAppointments: (appointments) =>
         set({ appointments, appointmentHistory: [], appointmentFuture: [] }),
+      syncAppointments: (appointments) => set({ appointments }),
       addAppointment: (appointment) =>
         set((state) => ({
           appointmentHistory: [
