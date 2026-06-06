@@ -1,4 +1,5 @@
 import type { ClassValue } from "clsx";
+import type { Settings } from "../types";
 import { clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
 
@@ -187,6 +188,37 @@ export function getMonthGrid(
     pad++;
   }
   return days;
+}
+
+/** Get working hours for a specific date, falling back to global hours */
+export function getWorkingScheduleForDate(
+  dateStr: string,
+  settings: Settings,
+): { start: string; end: string; enabled: boolean } {
+  const dow = new Date(`${dateStr}T00:00:00`).getDay();
+  const keys = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"] as const;
+  const schedule = settings.workingDays?.[keys[dow]];
+  if (schedule) return schedule;
+  return {
+    start: settings.workingHoursStart,
+    end: settings.workingHoursEnd,
+    enabled: dow > 0 && dow < 6,
+  };
+}
+
+/** Recalculate phase start times from a new base start time */
+export function recalcPhaseStarts<T extends { durationMinutes: number; startTime: string }>(
+  phases: T[],
+  baseStart: string,
+): T[] {
+  const [sh, sm] = baseStart.split(":").map(Number);
+  let cursor = sh * 60 + sm;
+  return phases.map((p) => {
+    const hh = String(Math.floor(cursor / 60)).padStart(2, "0");
+    const mm = String(cursor % 60).padStart(2, "00");
+    cursor += p.durationMinutes;
+    return { ...p, startTime: `${hh}:${mm}` };
+  });
 }
 
 /** Rotate the hue of a hex color by `degrees` (0-360). */

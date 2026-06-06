@@ -41,6 +41,7 @@ interface AppState {
   addAppointment: (appointment: Appointment) => void;
   updateAppointment: (appointment: Appointment) => void;
   deleteAppointment: (id: string) => void;
+  deleteAppointments: (ids: string[]) => void;
 
   // Actions — Services
   setServices: (services: Service[]) => void;
@@ -66,11 +67,26 @@ interface AppState {
   setLoading: (key: keyof LoadingFlags, value: boolean) => void;
 }
 
+const DEFAULT_WORKING_DAY = (enabled: boolean): import("../types").WorkingDaySchedule => ({
+  enabled,
+  start: "08:00",
+  end: "19:00",
+});
+
 const DEFAULT_SETTINGS: Settings = {
   startWeekOnMonday: true,
   darkMode: false,
   workingHoursStart: "08:00",
   workingHoursEnd: "19:00",
+  workingDays: {
+    sun: DEFAULT_WORKING_DAY(false),
+    mon: DEFAULT_WORKING_DAY(true),
+    tue: DEFAULT_WORKING_DAY(true),
+    wed: DEFAULT_WORKING_DAY(true),
+    thu: DEFAULT_WORKING_DAY(true),
+    fri: DEFAULT_WORKING_DAY(true),
+    sat: DEFAULT_WORKING_DAY(false),
+  },
 };
 
 export const useAppStore = create<AppState>()(
@@ -124,6 +140,18 @@ export const useAppStore = create<AppState>()(
           appointmentFuture: [],
           appointments: state.appointments.filter((a) => a.id !== id),
         })),
+      deleteAppointments: (ids) =>
+        set((state) => {
+          const idSet = new Set(ids);
+          return {
+            appointmentHistory: [
+              ...state.appointmentHistory.slice(-20),
+              { appointments: state.appointments, route: state.currentRoute },
+            ],
+            appointmentFuture: [],
+            appointments: state.appointments.filter((a) => !idSet.has(a.id)),
+          };
+        }),
 
       undo: () =>
         set((state) => {

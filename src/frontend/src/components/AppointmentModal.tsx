@@ -10,7 +10,7 @@ import {
   getClientNames,
   updateAppointment,
 } from "../lib/api";
-import { doBlocksOverlap, formatDate, formatDuration, getTodayString } from "../lib/utils";
+import { doBlocksOverlap, formatDate, formatDuration, formatTime12, getTodayString, getWorkingScheduleForDate } from "../lib/utils";
 import { useAppStore } from "../store/useAppStore";
 import type {
   Appointment,
@@ -91,6 +91,7 @@ export default function AppointmentModal({
   const services = useAppStore(useShallow((s) => s.services));
   const appointments = useAppStore(useShallow((s) => s.appointments));
   const clientContacts = useAppStore(useShallow((s) => s.clientContacts));
+  const settings = useAppStore(useShallow((s) => s.settings));
   const addAppointment = useAppStore((s) => s.addAppointment);
   const storeUpdate = useAppStore((s) => s.updateAppointment);
   const deleteAppointment = useAppStore((s) => s.deleteAppointment);
@@ -110,6 +111,8 @@ export default function AppointmentModal({
     isProcessing: boolean;
   } | null>(null);
   const [overlapConfirmed, setOverlapConfirmed] = useState(false);
+  const [outsideHoursWarning, setOutsideHoursWarning] = useState<string | null>(null);
+  const [outsideHoursConfirmed, setOutsideHoursConfirmed] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [recurEnabled, setRecurEnabled] = useState(false);
   const [recurWeeks, setRecurWeeks] = useState(1);
@@ -157,6 +160,8 @@ export default function AppointmentModal({
     setPendingServiceId(null);
     setOverlapWarning(null);
     setOverlapConfirmed(false);
+    setOutsideHoursWarning(null);
+    setOutsideHoursConfirmed(false);
     setSubmitting(false);
     setConfirmDelete(false);
     setRecurEnabled(false);
@@ -367,6 +372,24 @@ export default function AppointmentModal({
     return null;
   }
 
+  function checkWorkingHours(): string | null {
+    if (!form.date || !form.startTime) return null;
+    const schedule = getWorkingScheduleForDate(form.date, settings);
+    const dayName = new Date(`${form.date}T00:00:00`).toLocaleDateString("en-US", { weekday: "long" });
+    if (!schedule.enabled) {
+      return `${dayName} is not in your working schedule.`;
+    }
+    const toMin = (t: string) => { const [h, m] = t.split(":").map(Number); return h * 60 + m; };
+    const apptStart = toMin(form.startTime);
+    const apptEnd = apptStart + form.durationHours * 60 + form.durationMinutes;
+    const schedStart = toMin(schedule.start);
+    const schedEnd = toMin(schedule.end);
+    if (apptStart < schedStart || apptEnd > schedEnd) {
+      return `This appointment is outside your working hours for ${dayName} (${formatTime12(schedule.start)}–${formatTime12(schedule.end)}).`;
+    }
+    return null;
+  }
+
   async function handleSubmit(skipOverlapCheck = false) {
     if (
       !form.clientName.trim() ||
@@ -375,6 +398,14 @@ export default function AppointmentModal({
       !form.startTime
     )
       return;
+
+    if (!outsideHoursConfirmed) {
+      const hoursMsg = checkWorkingHours();
+      if (hoursMsg) {
+        setOutsideHoursWarning(hoursMsg);
+        return;
+      }
+    }
 
     if (!overlapConfirmed && !skipOverlapCheck) {
       const overlap = checkOverlap();
@@ -506,6 +537,41 @@ export default function AppointmentModal({
               </div>
             );
           })()}
+
+        {/* Outside working hours warning */}
+        {outsideHoursWarning && (
+          <div
+            className="mx-5 mt-4 flex-shrink-0 rounded-lg border border-accent/40 bg-accent/5 p-3 flex flex-col gap-2"
+            data-ocid="appointment.outside_hours_warning"
+          >
+            <div className="flex gap-2 items-start">
+              <AlertTriangle size={16} className="text-accent mt-0.5 shrink-0" />
+              <p className="text-sm">{outsideHoursWarning} Book anyway?</p>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                className="flex-1"
+                onClick={() => {
+                  setOutsideHoursConfirmed(true);
+                  setOutsideHoursWarning(null);
+                  handleSubmit();
+                }}
+                data-ocid="appointment.outside_hours_confirm"
+              >
+                Book anyway
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="flex-1"
+                onClick={() => setOutsideHoursWarning(null)}
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
+        )}
 
         {/* Overlap warning */}
         {overlapWarning && (

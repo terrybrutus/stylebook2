@@ -13,9 +13,20 @@ import {
 } from "../../lib/utils";
 import * as api from "../../lib/api";
 import { useAppStore } from "../../store/useAppStore";
-import type { Appointment, AppointmentModalState } from "../../types";
+import type { Appointment, AppointmentModalState, PhaseInstance } from "../../types";
 
 const HOUR_PX = 60;
+
+function recalcPhaseStarts(phases: PhaseInstance[], baseStart: string): PhaseInstance[] {
+  const [sh, sm] = baseStart.split(':').map(Number);
+  let cursor = sh * 60 + sm;
+  return phases.map((p) => {
+    const hh = String(Math.floor(cursor / 60)).padStart(2, '0');
+    const mm = String(cursor % 60).padStart(2, '00');
+    cursor += p.durationMinutes;
+    return { ...p, startTime: `${hh}:${mm}` };
+  });
+}
 
 interface Props {
   date: string; // YYYY-MM-DD
@@ -62,12 +73,26 @@ function getPhaseStartMinutes(phase: { startTime: string }): number {
   return h * 60 + m;
 }
 
+// Build render blocks: each appointment → one block per phase (or single block)
+type RenderBlock = {
+  appt: Appointment;
+  topPx: number;
+  heightPx: number;
+  isProcessing: boolean;
+  label: string;
+  phaseIndex: number;
+  color: string;
+  leftPct: string;
+  zIdx: number;
+};
+
 export function DayView({ date, onModalChange }: Props) {
-  const { settings, allAppointments, deleteAppointment } = useAppStore(
+  const { settings, allAppointments, deleteAppointment, updateAppointment } = useAppStore(
     useShallow((s) => ({
       settings: s.settings,
       allAppointments: s.appointments,
       deleteAppointment: s.deleteAppointment,
+      updateAppointment: s.updateAppointment,
     })),
   );
   // Filter outside selector — filter() creates a new array reference every call,
@@ -88,6 +113,17 @@ export function DayView({ date, onModalChange }: Props) {
   );
   const [contextMenu, setContextMenu] = useState<ContextMenu | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const dayColRef = useRef<HTMLDivElement>(null);
+
+  const activeDragRef = useRef<{
+    block: RenderBlock;
+    offsetMinutes: number;
+    started: boolean;
+    startClientY: number;
+    longPressTimer: ReturnType<typeof setTimeout> | null;
+  } | null>(null);
+  const [dragGhost, setDragGhost] = useState<{ topPx: number; time: string } | null>(null);
+  const [dropConfirm, setDropConfirm] = useState<{ appt: Appointment; newTime: string } | null>(null);
 
   // Update current time every 30s — safe: isToday and startHour are primitives
   useEffect(() => {
@@ -121,15 +157,6 @@ export function DayView({ date, onModalChange }: Props) {
     [date, onModalChange],
   );
 
-  const handleApptClick = useCallback(
-    (e: React.MouseEvent, appt: Appointment) => {
-      e.stopPropagation();
-      e.preventDefault();
-      onModalChange({ isOpen: true, mode: "edit", appointment: appt });
-    },
-    [onModalChange],
-  );
-
   const handleApptContextMenu = useCallback(
     (e: React.MouseEvent, appt: Appointment) => {
       e.preventDefault();
@@ -139,34 +166,98 @@ export function DayView({ date, onModalChange }: Props) {
     [],
   );
 
-  // Long-press support
-  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const longPressTarget = useRef<Appointment | null>(null);
+  function getSnappedMinutes(clientY: number, offsetMinutes: number): number {
+    const col = dayColRef.current;
+    if (!col) return startHour * 60;
+    const rect = col.getBoundingClientRect();
+    const relY = clientY - rect.top - (offsetMinutes / 60) * HOUR_PX;
+    const rawMin = startHour * 60 + (relY / HOUR_PX) * 60;
+    const snapped = Math.round(rawMin / 15) * 15;
+    return Math.max(startHour * 60, Math.min(endHour * 60 - 15, snapped));
+  }
 
-  function handleTouchStart(e: React.TouchEvent, appt: Appointment) {
-    longPressTarget.current = appt;
-    longPressTimer.current = setTimeout(() => {
-      const touch = e.touches[0];
-      setContextMenu({ x: touch.clientX, y: touch.clientY, appointment: appt });
+  function minutesToTimeStr(totalMin: number): string {
+    const h = Math.floor(totalMin / 60);
+    const m = totalMin % 60;
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '00')}`;
+  }
+
+  function handleBlockPointerDown(e: React.PointerEvent, block: RenderBlock) {
+    if (block.isProcessing) return;
+    e.stopPropagation();
+    const col = dayColRef.current;
+    if (!col) return;
+    const rect = col.getBoundingClientRect();
+    const clickY = e.clientY - rect.top;
+    const offsetMinutes = Math.max(0, ((clickY - block.topPx) / HOUR_PX) * 60);
+    (e.currentTarget as Element).setPointerCapture(e.pointerId);
+    const longPressTimer = setTimeout(() => {
+      if (activeDragRef.current && !activeDragRef.current.started) {
+        setContextMenu({ x: e.clientX, y: e.clientY, appointment: block.appt });
+      }
     }, 500);
+    activeDragRef.current = { block, offsetMinutes, started: false, startClientY: e.clientY, longPressTimer };
   }
 
-  function handleTouchEnd() {
-    if (longPressTimer.current) clearTimeout(longPressTimer.current);
+  function handleBlockPointerMove(e: React.PointerEvent) {
+    const drag = activeDragRef.current;
+    if (!drag) return;
+    if (!drag.started) {
+      if (Math.abs(e.clientY - drag.startClientY) < 6) return;
+      drag.started = true;
+      if (drag.longPressTimer) {
+        clearTimeout(drag.longPressTimer);
+        drag.longPressTimer = null;
+      }
+    }
+    const totalMin = getSnappedMinutes(e.clientY, drag.offsetMinutes);
+    const topPx = ((totalMin - startHour * 60) / 60) * HOUR_PX;
+    setDragGhost({ topPx, time: minutesToTimeStr(totalMin) });
   }
 
-  // Build render blocks: each appointment → one block per phase (or single block)
-  type RenderBlock = {
-    appt: Appointment;
-    topPx: number;
-    heightPx: number;
-    isProcessing: boolean;
-    label: string;
-    phaseIndex: number;
-    color: string;
-    leftPct: string;
-    zIdx: number;
-  };
+  function handleBlockPointerUp(e: React.PointerEvent, block: RenderBlock) {
+    const drag = activeDragRef.current;
+    if (drag?.longPressTimer) clearTimeout(drag.longPressTimer);
+    activeDragRef.current = null;
+    setDragGhost(null);
+    if (!drag?.started) {
+      onModalChange({ isOpen: true, mode: 'edit', appointment: block.appt });
+      return;
+    }
+    const totalMin = getSnappedMinutes(e.clientY, drag.offsetMinutes);
+    const newTime = minutesToTimeStr(totalMin);
+    if (newTime !== block.appt.startTime) {
+      setDropConfirm({ appt: block.appt, newTime });
+    }
+  }
+
+  function handleBlockPointerCancel() {
+    if (activeDragRef.current?.longPressTimer) clearTimeout(activeDragRef.current.longPressTimer);
+    activeDragRef.current = null;
+    setDragGhost(null);
+  }
+
+  async function confirmDrop() {
+    if (!dropConfirm) return;
+    const { appt, newTime } = dropConfirm;
+    const newPhases = appt.phases.length > 0 ? recalcPhaseStarts(appt.phases, newTime) : appt.phases;
+    const updated: Appointment = { ...appt, startTime: newTime, phases: newPhases, updatedAt: new Date().toISOString() };
+    updateAppointment(updated);
+    api.updateAppointment(appt.id, {
+      clientName: updated.clientName,
+      serviceId: updated.serviceId,
+      serviceName: updated.serviceName,
+      date: updated.date,
+      startTime: newTime,
+      durationMinutes: updated.durationMinutes,
+      price: updated.price,
+      phoneNumber: updated.phoneNumber,
+      notes: updated.notes,
+      phases: newPhases,
+      color: updated.color,
+    }).catch(console.error);
+    setDropConfirm(null);
+  }
 
   const rawBlocks: Omit<RenderBlock, 'leftPct' | 'zIdx'>[] = [];
   for (const appt of appointments) {
@@ -267,6 +358,7 @@ export function DayView({ date, onModalChange }: Props) {
 
       {/* Day column */}
       <div
+        ref={dayColRef}
         className="flex-1 relative bg-white cursor-pointer"
         style={{ height: totalPx }}
       >
@@ -309,12 +401,33 @@ export function DayView({ date, onModalChange }: Props) {
             block={block}
             leftPct={block.leftPct}
             zIdx={block.zIdx}
-            onEdit={handleApptClick}
+            isDragging={dragGhost !== null && activeDragRef.current?.block.appt.id === block.appt.id}
+            onBlockPointerDown={handleBlockPointerDown}
+            onBlockPointerMove={handleBlockPointerMove}
+            onBlockPointerUp={handleBlockPointerUp}
+            onBlockPointerCancel={handleBlockPointerCancel}
             onContextMenu={handleApptContextMenu}
-            onTouchStart={handleTouchStart}
-            onTouchEnd={handleTouchEnd}
           />
         ))}
+
+        {/* Drag ghost block */}
+        {dragGhost && activeDragRef.current && (
+          <div
+            className="absolute right-1 rounded-md border-2 border-dashed pointer-events-none"
+            style={{
+              top: dragGhost.topPx + 1,
+              height: activeDragRef.current.block.heightPx - 2,
+              left: `calc(${activeDragRef.current.block.leftPct} + 4px)`,
+              zIndex: 50,
+              borderColor: activeDragRef.current.block.color,
+              backgroundColor: hexToRgba(activeDragRef.current.block.color, 0.3),
+            }}
+          >
+            <div className="px-1.5 py-0.5">
+              <span className="text-[10px] font-bold">{formatTime12(dragGhost.time)}</span>
+            </div>
+          </div>
+        )}
 
         {/* End-of-day boundary line + label */}
         <div
@@ -377,35 +490,61 @@ export function DayView({ date, onModalChange }: Props) {
           </button>
         </div>
       )}
+
+      {/* Drop confirmation dialog */}
+      {dropConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/40 backdrop-blur-sm">
+          <div className="bg-card rounded-2xl shadow-2xl p-5 mx-4 max-w-sm w-full">
+            <p className="text-sm font-semibold mb-1">Move appointment?</p>
+            <p className="text-sm text-muted-foreground mb-4">
+              Move <span className="font-medium text-foreground">{dropConfirm.appt.clientName}</span> to{' '}
+              <span className="font-medium text-accent">{formatTime12(dropConfirm.newTime)}</span>?
+            </p>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                className="flex-1 py-2 rounded-lg bg-accent text-accent-foreground text-sm font-medium hover:bg-accent/90"
+                onClick={confirmDrop}
+              >
+                Confirm
+              </button>
+              <button
+                type="button"
+                className="flex-1 py-2 rounded-lg border border-border text-sm font-medium hover:bg-muted"
+                onClick={() => setDropConfirm(null)}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
 type BlockProps = {
-  block: {
-    appt: Appointment;
-    topPx: number;
-    heightPx: number;
-    isProcessing: boolean;
-    label: string;
-    color: string;
-  };
+  block: RenderBlock;
   leftPct: string;
   zIdx: number;
-  onEdit: (e: React.MouseEvent, appt: Appointment) => void;
+  isDragging: boolean;
+  onBlockPointerDown: (e: React.PointerEvent, block: RenderBlock) => void;
+  onBlockPointerMove: (e: React.PointerEvent) => void;
+  onBlockPointerUp: (e: React.PointerEvent, block: RenderBlock) => void;
+  onBlockPointerCancel: () => void;
   onContextMenu: (e: React.MouseEvent, appt: Appointment) => void;
-  onTouchStart: (e: React.TouchEvent, appt: Appointment) => void;
-  onTouchEnd: () => void;
 };
 
 function AppointmentBlock({
   block,
   leftPct,
   zIdx,
-  onEdit,
+  isDragging,
+  onBlockPointerDown,
+  onBlockPointerMove,
+  onBlockPointerUp,
+  onBlockPointerCancel,
   onContextMenu,
-  onTouchStart,
-  onTouchEnd,
 }: BlockProps) {
   const { appt, topPx, heightPx, isProcessing, label, color } = block;
   const isShort = heightPx < 40;
@@ -421,7 +560,6 @@ function AppointmentBlock({
       };
 
   return (
-    // biome-ignore lint/a11y/useKeyWithClickEvents: appointment block handles keyboard via parent
     <div
       className="absolute right-1 rounded-md border overflow-hidden cursor-pointer select-none"
       style={{
@@ -430,15 +568,14 @@ function AppointmentBlock({
         left: `calc(${leftPct} + 4px)`,
         zIndex: zIdx,
         borderLeft: leftPct !== '0%' ? `3px solid ${color}` : undefined,
+        opacity: isDragging ? 0.35 : 1,
         ...bgStyle,
       }}
-      onClick={(e) => {
-        e.stopPropagation();
-        onEdit(e, appt);
-      }}
+      onPointerDown={(e) => onBlockPointerDown(e, block)}
+      onPointerMove={onBlockPointerMove}
+      onPointerUp={(e) => onBlockPointerUp(e, block)}
+      onPointerCancel={onBlockPointerCancel}
       onContextMenu={(e) => onContextMenu(e, appt)}
-      onTouchStart={(e) => onTouchStart(e, appt)}
-      onTouchEnd={onTouchEnd}
       data-ocid="appointment.card"
     >
       <div className="px-1.5 py-0.5 h-full flex flex-col justify-start overflow-hidden">

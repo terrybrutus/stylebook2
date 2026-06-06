@@ -80,7 +80,7 @@ export function MonthView({ year, month, onDayClick, onModalChange }: Props) {
               {/* Day number + count */}
               <div className="flex items-center justify-between px-0.5">
                 {dayAppts.length > 0 ? (
-                  <span className="text-[9px] font-semibold text-accent leading-none">
+                  <span className="inline-flex items-center justify-center min-w-[16px] h-4 px-1 rounded-full bg-accent text-accent-foreground text-[9px] font-bold leading-none">
                     {dayAppts.length}
                   </span>
                 ) : (
