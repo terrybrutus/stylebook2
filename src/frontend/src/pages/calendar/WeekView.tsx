@@ -7,6 +7,7 @@ import {
   formatTime12,
   generateTimeSlots,
   getWeekDates,
+  getWorkingScheduleForDate,
   hexToRgba,
   hueRotate,
 } from "../../lib/utils";
@@ -111,8 +112,11 @@ export function WeekView({ anchorDate, onModalChange, onDayClick }: Props) {
   });
   const [contextMenu, setContextMenu] = useState<ContextMenu | null>(null);
 
-  // Mobile 3-day swipe state
-  const [mobileStartIdx, setMobileStartIdx] = useState(0);
+  // Mobile 3-day swipe state — reset window to show today when anchorDate changes
+  const [mobileStartIdx, setMobileStartIdx] = useState(() => {
+    const todayIdx = weekDates.indexOf(dateToString(new Date()));
+    return todayIdx >= 0 ? Math.min(Math.floor(todayIdx / 3) * 3, 4) : 0;
+  });
   const [slideClass, setSlideClass] = useState('');
   const touchStartX = useRef<number>(0);
   const touchStartY = useRef<number>(0);
@@ -141,6 +145,10 @@ export function WeekView({ anchorDate, onModalChange, onDayClick }: Props) {
     startClientY: number;
     startClientX: number;
     longPressTimer: ReturnType<typeof setTimeout> | null;
+    isTouch: boolean;
+    dragArmed: boolean;
+    pointerId: number;
+    pointerTarget: Element;
   } | null>(null);
 
   const [dragGhost, setDragGhost] = useState<{
@@ -156,6 +164,7 @@ export function WeekView({ anchorDate, onModalChange, onDayClick }: Props) {
     appt: Appointment;
     newTime: string;
     newDate: string;
+    outsideHours?: string;
   } | null>(null);
 
   useEffect(() => {
@@ -213,6 +222,12 @@ export function WeekView({ anchorDate, onModalChange, onDayClick }: Props) {
     return () => window.removeEventListener("resize", check);
   }, []);
 
+  // When anchor week changes (e.g. Today button), reset mobile window to show today
+  useEffect(() => {
+    const todayIdx = weekDates.indexOf(dateToString(new Date()));
+    setMobileStartIdx(todayIdx >= 0 ? Math.min(Math.floor(todayIdx / 3) * 3, 4) : 0);
+  }, [weekDates[0]]);
+
   const visibleDates = isMobilePortrait
     ? weekDates.slice(mobileStartIdx, mobileStartIdx + 3)
     : weekDates;
@@ -266,23 +281,40 @@ export function WeekView({ anchorDate, onModalChange, onDayClick }: Props) {
   function handleBlockPointerDown(e: React.PointerEvent, block: RenderBlock, dateStr: string) {
     if (block.isProcessing) return;
     e.stopPropagation();
-    (e.currentTarget as Element).setPointerCapture(e.pointerId);
+    const isTouch = e.pointerType === "touch";
+    const target = e.currentTarget as Element;
+    if (!isTouch) target.setPointerCapture(e.pointerId);
     const col = colRefs.current.get(dateStr);
     if (!col) return;
     const rect = col.getBoundingClientRect();
     const clickY = e.clientY - rect.top;
     const offsetMinutes = Math.max(0, (clickY - block.topPx) / MIN_PX);
     const longPressTimer = setTimeout(() => {
-      if (activeDragRef.current && !activeDragRef.current.started) {
+      const drag = activeDragRef.current;
+      if (!drag || drag.started) return;
+      if (isTouch && !drag.dragArmed) {
+        drag.dragArmed = true;
+        drag.pointerTarget.setPointerCapture(drag.pointerId);
+      } else {
         setContextMenu({ x: e.clientX, y: e.clientY, appointment: block.appt });
       }
-    }, 500);
-    activeDragRef.current = { block, offsetMinutes, started: false, startClientY: e.clientY, startClientX: e.clientX, longPressTimer };
+    }, 300);
+    activeDragRef.current = { block, offsetMinutes, started: false, startClientY: e.clientY, startClientX: e.clientX, longPressTimer, isTouch, dragArmed: !isTouch, pointerId: e.pointerId, pointerTarget: target };
   }
 
   function handleBlockPointerMove(e: React.PointerEvent) {
     const drag = activeDragRef.current;
     if (!drag) return;
+    if (drag.isTouch && !drag.dragArmed) {
+      // Touch movement before arm fires — cancel so native scroll works
+      const dy = Math.abs(e.clientY - drag.startClientY);
+      const dx = Math.abs(e.clientX - drag.startClientX);
+      if (dy > 8 || dx > 8) {
+        if (drag.longPressTimer) clearTimeout(drag.longPressTimer);
+        activeDragRef.current = null;
+      }
+      return;
+    }
     const dy = Math.abs(e.clientY - drag.startClientY);
     const dx = Math.abs(e.clientX - drag.startClientX);
     if (!drag.started) {
@@ -320,7 +352,18 @@ export function WeekView({ anchorDate, onModalChange, onDayClick }: Props) {
     const totalMin = getSnappedMinutes(e.clientY, colEl, drag.offsetMinutes);
     const newTime = minutesToTimeStr(totalMin);
     if (newTime !== block.appt.startTime || targetDate !== block.appt.date) {
-      setDropConfirm({ appt: block.appt, newTime, newDate: targetDate });
+      const schedule = getWorkingScheduleForDate(targetDate, settings);
+      let outsideHours: string | undefined;
+      if (!schedule.enabled) {
+        outsideHours = `That day is not in your working schedule.`;
+      } else {
+        const toMin = (t: string) => { const [h, m] = t.split(":").map(Number); return h * 60 + m; };
+        const apptEnd = toMin(newTime) + block.appt.durationMinutes;
+        if (toMin(newTime) < toMin(schedule.start) || apptEnd > toMin(schedule.end)) {
+          outsideHours = `Outside working hours (${formatTime12(schedule.start)}–${formatTime12(schedule.end)}).`;
+        }
+      }
+      setDropConfirm({ appt: block.appt, newTime, newDate: targetDate, outsideHours });
     }
   }
 
@@ -700,11 +743,14 @@ export function WeekView({ anchorDate, onModalChange, onDayClick }: Props) {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/40 backdrop-blur-sm">
           <div className="bg-card rounded-2xl shadow-2xl p-5 mx-4 max-w-sm w-full">
             <p className="text-sm font-semibold mb-1">Move appointment?</p>
-            <p className="text-sm text-muted-foreground mb-4">
+            <p className="text-sm text-muted-foreground mb-2">
               Move <span className="font-medium text-foreground">{dropConfirm.appt.clientName}</span> to{' '}
               <span className="font-medium text-accent">{new Date(`${dropConfirm.newDate}T00:00:00`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</span>{' '}
               at <span className="font-medium text-accent">{formatTime12(dropConfirm.newTime)}</span>?
             </p>
+            {dropConfirm.outsideHours && (
+              <p className="text-xs text-amber-600 dark:text-amber-400 mb-3">⚠ {dropConfirm.outsideHours}</p>
+            )}
             <div className="flex gap-2">
               <button
                 type="button"

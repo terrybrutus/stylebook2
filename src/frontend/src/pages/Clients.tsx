@@ -156,6 +156,7 @@ export default function Clients() {
   const addClientContact = useAppStore((s) => s.addClientContact);
   const updateClientContact = useAppStore((s) => s.updateClientContact);
   const deleteClientContact = useAppStore((s) => s.deleteClientContact);
+  const deleteAppointments = useAppStore((s) => s.deleteAppointments);
   const renameClient = useAppStore((s) => s.renameClient);
 
   const [search, setSearch] = useState("");
@@ -259,7 +260,14 @@ export default function Clients() {
           });
         }}
         onDelete={() => {
+          const apptIds = screen.client.appointments.map((a) => a.id);
           deleteClientContact(screen.client.name);
+          if (apptIds.length > 0) {
+            deleteAppointments(apptIds);
+            for (const id of apptIds) {
+              api.deleteAppointment(id).catch(console.error);
+            }
+          }
           setScreen({ type: "list" });
         }}
       />

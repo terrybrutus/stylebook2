@@ -322,7 +322,7 @@ export default function AppointmentModal({
 
   function checkOverlap(): { message: string; isProcessing: boolean } | null {
     const svc = services.find((s) => s.id === form.serviceId);
-    const _color = svc?.color ?? "#00ADB5";
+    const _color = svc?.color ?? "#ACE6C0";
     const blocks =
       form.phases.length > 0
         ? form.phases.map((p) => ({
@@ -390,7 +390,7 @@ export default function AppointmentModal({
     return null;
   }
 
-  async function handleSubmit(skipOverlapCheck = false) {
+  async function handleSubmit(skipOverlapCheck = false, skipHoursCheck = false) {
     if (
       !form.clientName.trim() ||
       !form.serviceId ||
@@ -399,7 +399,7 @@ export default function AppointmentModal({
     )
       return;
 
-    if (!outsideHoursConfirmed) {
+    if (!skipHoursCheck && !outsideHoursConfirmed) {
       const hoursMsg = checkWorkingHours();
       if (hoursMsg) {
         setOutsideHoursWarning(hoursMsg);
@@ -429,7 +429,7 @@ export default function AppointmentModal({
         phoneNumber: form.phone.trim() || undefined,
         notes: form.notes.trim() || undefined,
         phases: form.phases,
-        color: svc?.color ?? "#00ADB5",
+        color: svc?.color ?? "#ACE6C0",
       };
 
       if (mode === "create") {
@@ -463,7 +463,7 @@ export default function AppointmentModal({
   return (
     <dialog
       open
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-transparent p-0 max-w-none w-full h-full"
+      className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-transparent p-0 max-w-none w-full h-full"
       data-ocid="appointment.dialog"
       aria-label={mode === "create" ? "New Appointment" : "Edit Appointment"}
     >
@@ -553,9 +553,8 @@ export default function AppointmentModal({
                 size="sm"
                 className="flex-1"
                 onClick={() => {
-                  setOutsideHoursConfirmed(true);
                   setOutsideHoursWarning(null);
-                  handleSubmit();
+                  handleSubmit(false, true);
                 }}
                 data-ocid="appointment.outside_hours_confirm"
               >
