@@ -1,5 +1,5 @@
 import type { ClassValue } from "clsx";
-import type { Settings } from "../types";
+import type { Appointment, Service, Settings } from "../types";
 import { clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
 
@@ -255,4 +255,144 @@ export function hueRotate(hex: string, degrees: number): string {
   else             { r1 = c; g1 = 0; b1 = x; }
   const toHex = (n: number) => Math.round((n + m) * 255).toString(16).padStart(2, "0");
   return `#${toHex(r1)}${toHex(g1)}${toHex(b1)}`;
+}
+
+// ─── Smart slot suggestions ───────────────────────────────────────────────────
+
+export interface SlotSuggestion {
+  date: string;       // YYYY-MM-DD
+  time: string;       // HH:MM (24h)
+  type: "open" | "processing-gap";
+  duringClient?: string; // set when type === "processing-gap"
+}
+
+/** Convert HH:MM string to total minutes since midnight */
+function timeToMin(t: string): number {
+  const [h, m] = t.split(":").map(Number);
+  return h * 60 + m;
+}
+
+/** Convert total minutes to HH:MM */
+function minToTime(totalMin: number): string {
+  return `${String(Math.floor(totalMin / 60)).padStart(2, "0")}:${String(totalMin % 60).padStart(2, "0")}`;
+}
+
+/** Get concrete time blocks for an existing appointment */
+function getApptBlocks(appt: Appointment): { start: number; end: number; isProcessing: boolean; clientName: string }[] {
+  if (appt.phases.length === 0) {
+    const s = timeToMin(appt.startTime);
+    return [{ start: s, end: s + appt.durationMinutes, isProcessing: false, clientName: appt.clientName }];
+  }
+  return appt.phases.map((p) => {
+    const timePart = p.startTime.includes("T") ? p.startTime.split("T")[1].slice(0, 5) : p.startTime.slice(0, 5);
+    const s = timeToMin(timePart);
+    return { start: s, end: s + p.durationMinutes, isProcessing: p.phaseType === "processing", clientName: appt.clientName };
+  });
+}
+
+/** Get concrete time blocks for a hypothetical new/edited appointment starting at startMin */
+function getNewBlocks(startMin: number, service: Service | null, durationMinutes: number): { start: number; end: number; isProcessing: boolean }[] {
+  if (service?.category === "multi" && service.phases.length > 0) {
+    let cursor = startMin;
+    return service.phases.map((p) => {
+      const block = { start: cursor, end: cursor + p.durationMinutes, isProcessing: p.phaseType === "processing" };
+      cursor += p.durationMinutes;
+      return block;
+    });
+  }
+  return [{ start: startMin, end: startMin + durationMinutes, isProcessing: false }];
+}
+
+/**
+ * Find all valid start times for an appointment on a given date.
+ * - New appointment's active phases must not overlap any existing active phase
+ * - New appointment's active phases CAN overlap existing processing phases (stylist is free)
+ * - New appointment's processing phases are unconstrained (stylist free regardless)
+ */
+export function findAvailableSlots(
+  date: string,
+  service: Service | null,
+  durationMinutes: number,
+  appointments: Appointment[],
+  settings: Settings,
+  excludeApptId?: string,
+): SlotSuggestion[] {
+  if (durationMinutes <= 0) return [];
+  const schedule = getWorkingScheduleForDate(date, settings);
+  if (!schedule.enabled) return [];
+
+  const dayStart = timeToMin(schedule.start);
+  const dayEnd = timeToMin(schedule.end);
+
+  const dayAppts = appointments.filter((a) => a.date === date && a.id !== excludeApptId);
+  const existingBlocks = dayAppts.flatMap(getApptBlocks);
+  const existingActive = existingBlocks.filter((b) => !b.isProcessing);
+  const existingProcessing = existingBlocks.filter((b) => b.isProcessing);
+
+  const suggestions: SlotSuggestion[] = [];
+
+  for (let t = dayStart; t + durationMinutes <= dayEnd; t += 15) {
+    const newBlocks = getNewBlocks(t, service, durationMinutes);
+    const newActive = newBlocks.filter((b) => !b.isProcessing);
+
+    // Check: no new active block overlaps any existing active block
+    let conflicts = false;
+    for (const nb of newActive) {
+      for (const eb of existingActive) {
+        if (nb.start < eb.end && nb.end > eb.start) {
+          conflicts = true;
+          break;
+        }
+      }
+      if (conflicts) break;
+    }
+    if (conflicts) continue;
+
+    // Classify: is any new active block sitting inside an existing processing block?
+    let isGap = false;
+    let duringClient: string | undefined;
+    for (const nb of newActive) {
+      for (const ep of existingProcessing) {
+        if (nb.start < ep.end && nb.end > ep.start) {
+          isGap = true;
+          duringClient = ep.clientName;
+          break;
+        }
+      }
+      if (isGap) break;
+    }
+
+    suggestions.push({
+      date,
+      time: minToTime(t),
+      type: isGap ? "processing-gap" : "open",
+      duringClient: isGap ? duringClient : undefined,
+    });
+  }
+
+  return suggestions;
+}
+
+/**
+ * Scan forward from startDate (exclusive) up to maxDays, returning the first
+ * date that has at least one available slot.
+ */
+export function findNextAvailable(
+  fromDate: string,
+  service: Service | null,
+  durationMinutes: number,
+  appointments: Appointment[],
+  settings: Settings,
+  excludeApptId?: string,
+  maxDays = 30,
+): SlotSuggestion | null {
+  const base = new Date(`${fromDate}T00:00:00`);
+  for (let i = 1; i <= maxDays; i++) {
+    const d = new Date(base);
+    d.setDate(base.getDate() + i);
+    const dateStr = dateToString(d);
+    const slots = findAvailableSlots(dateStr, service, durationMinutes, appointments, settings, excludeApptId);
+    if (slots.length > 0) return slots[0];
+  }
+  return null;
 }
