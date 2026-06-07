@@ -7,6 +7,7 @@ import {
   formatTime12,
   generateTimeSlots,
   getCurrentTimePixels,
+  getWorkingScheduleForDate,
   hexToRgba,
   hueRotate,
   timeToPixels,
@@ -121,9 +122,13 @@ export function DayView({ date, onModalChange }: Props) {
     started: boolean;
     startClientY: number;
     longPressTimer: ReturnType<typeof setTimeout> | null;
+    isTouch: boolean;
+    dragArmed: boolean;
+    pointerId: number;
+    pointerTarget: Element;
   } | null>(null);
   const [dragGhost, setDragGhost] = useState<{ topPx: number; time: string } | null>(null);
-  const [dropConfirm, setDropConfirm] = useState<{ appt: Appointment; newTime: string } | null>(null);
+  const [dropConfirm, setDropConfirm] = useState<{ appt: Appointment; newTime: string; outsideHours?: string } | null>(null);
 
   // Update current time every 30s — safe: isToday and startHour are primitives
   useEffect(() => {
@@ -190,18 +195,33 @@ export function DayView({ date, onModalChange }: Props) {
     const rect = col.getBoundingClientRect();
     const clickY = e.clientY - rect.top;
     const offsetMinutes = Math.max(0, ((clickY - block.topPx) / HOUR_PX) * 60);
-    (e.currentTarget as Element).setPointerCapture(e.pointerId);
+    const isTouch = e.pointerType === "touch";
+    const target = e.currentTarget as Element;
+    if (!isTouch) target.setPointerCapture(e.pointerId);
     const longPressTimer = setTimeout(() => {
-      if (activeDragRef.current && !activeDragRef.current.started) {
+      const drag = activeDragRef.current;
+      if (!drag || drag.started) return;
+      if (isTouch && !drag.dragArmed) {
+        drag.dragArmed = true;
+        drag.pointerTarget.setPointerCapture(drag.pointerId);
+      } else {
         setContextMenu({ x: e.clientX, y: e.clientY, appointment: block.appt });
       }
-    }, 500);
-    activeDragRef.current = { block, offsetMinutes, started: false, startClientY: e.clientY, longPressTimer };
+    }, 300);
+    activeDragRef.current = { block, offsetMinutes, started: false, startClientY: e.clientY, longPressTimer, isTouch, dragArmed: !isTouch, pointerId: e.pointerId, pointerTarget: target };
   }
 
   function handleBlockPointerMove(e: React.PointerEvent) {
     const drag = activeDragRef.current;
     if (!drag) return;
+    if (drag.isTouch && !drag.dragArmed) {
+      // Touch movement before arm fires — cancel drag so scroll works
+      if (Math.abs(e.clientY - drag.startClientY) > 8) {
+        if (drag.longPressTimer) clearTimeout(drag.longPressTimer);
+        activeDragRef.current = null;
+      }
+      return;
+    }
     if (!drag.started) {
       if (Math.abs(e.clientY - drag.startClientY) < 6) return;
       drag.started = true;
@@ -227,7 +247,18 @@ export function DayView({ date, onModalChange }: Props) {
     const totalMin = getSnappedMinutes(e.clientY, drag.offsetMinutes);
     const newTime = minutesToTimeStr(totalMin);
     if (newTime !== block.appt.startTime) {
-      setDropConfirm({ appt: block.appt, newTime });
+      const schedule = getWorkingScheduleForDate(date, settings);
+      let outsideHours: string | undefined;
+      if (!schedule.enabled) {
+        outsideHours = `This day is not in your working schedule.`;
+      } else {
+        const toMin = (t: string) => { const [h, m] = t.split(":").map(Number); return h * 60 + m; };
+        const apptEnd = toMin(newTime) + block.appt.durationMinutes;
+        if (toMin(newTime) < toMin(schedule.start) || apptEnd > toMin(schedule.end)) {
+          outsideHours = `Outside working hours (${formatTime12(schedule.start)}–${formatTime12(schedule.end)}).`;
+        }
+      }
+      setDropConfirm({ appt: block.appt, newTime, outsideHours });
     }
   }
 
@@ -498,10 +529,13 @@ export function DayView({ date, onModalChange }: Props) {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/40 backdrop-blur-sm">
           <div className="bg-card rounded-2xl shadow-2xl p-5 mx-4 max-w-sm w-full">
             <p className="text-sm font-semibold mb-1">Move appointment?</p>
-            <p className="text-sm text-muted-foreground mb-4">
+            <p className="text-sm text-muted-foreground mb-2">
               Move <span className="font-medium text-foreground">{dropConfirm.appt.clientName}</span> to{' '}
               <span className="font-medium text-accent">{formatTime12(dropConfirm.newTime)}</span>?
             </p>
+            {dropConfirm.outsideHours && (
+              <p className="text-xs text-amber-600 dark:text-amber-400 mb-3">⚠ {dropConfirm.outsideHours}</p>
+            )}
             <div className="flex gap-2">
               <button
                 type="button"

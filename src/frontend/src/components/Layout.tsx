@@ -110,12 +110,12 @@ export function Layout({ children }: LayoutProps) {
 
       {/* Header */}
       <header className="flex items-center justify-between px-4 py-3 bg-card border-b border-border shadow-xs flex-shrink-0">
-        <div className="flex items-center gap-2">
+        <Link to="/" className="flex items-center gap-2">
           <Scissors size={22} className="text-accent" />
           <span className="text-lg font-semibold tracking-tight font-display">
             StyleBook
           </span>
-        </div>
+        </Link>
         <div className="flex items-center gap-1">
           <button
             type="button"
@@ -226,7 +226,7 @@ export function Layout({ children }: LayoutProps) {
       {/* Mobile bottom tab bar — safe-area-inset-bottom keeps it above iPhone home bar */}
       <nav
         className="md:hidden flex items-center bg-card border-t border-border flex-shrink-0"
-        style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+        style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 10px)' }}
         data-ocid="nav.bottom_tabs"
       >
         {NAV_ITEMS.map((item) => {
@@ -235,6 +235,7 @@ export function Layout({ children }: LayoutProps) {
             <Link
               key={item.path}
               to={item.path}
+              style={{ touchAction: 'manipulation' }}
               className={[
                 "flex-1 flex flex-col items-center justify-center py-2 gap-0.5 text-[10px] font-medium transition-colors min-h-[56px]",
                 active

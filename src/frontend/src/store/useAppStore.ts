@@ -198,7 +198,8 @@ export const useAppStore = create<AppState>()(
         })),
 
       // Settings actions
-      setSettings: (settings) => set({ settings }),
+      setSettings: (settings) =>
+        set((state) => ({ settings: { ...state.settings, ...settings } })),
       updateSettings: (patch) =>
         set((state) => ({ settings: { ...state.settings, ...patch } })),
 
