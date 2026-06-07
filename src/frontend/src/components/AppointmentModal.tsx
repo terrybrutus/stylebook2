@@ -115,6 +115,7 @@ export default function AppointmentModal({
   const [outsideHoursWarning, setOutsideHoursWarning] = useState<string | null>(null);
   const [outsideHoursConfirmed, setOutsideHoursConfirmed] = useState(false);
   const [findingNext, setFindingNext] = useState(false);
+  const [findNextMsg, setFindNextMsg] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [recurEnabled, setRecurEnabled] = useState(false);
   const [recurWeeks, setRecurWeeks] = useState(1);
@@ -239,12 +240,13 @@ export default function AppointmentModal({
     }));
   }, []);
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: appointments/services consumed via refs; durationHours/Minutes only used when no service is selected (manual duration fallback)
+  // biome-ignore lint/correctness/useExhaustiveDependencies: appointments/services consumed via refs; stable refs avoid React #185 infinite loop
   const slotSuggestions = useMemo<SlotSuggestion[]>(() => {
     if (!isOpen || !form.serviceId || !form.date) return [];
     const svc = servicesRef.current.find((s) => s.id === form.serviceId) ?? null;
-    const dur = svc ? svc.totalDurationMinutes : form.durationHours * 60 + form.durationMinutes;
-    if (dur <= 0) return [];
+    // Always use form duration — it's set from the service on select and respects manual overrides.
+    // svc.totalDurationMinutes may be undefined for older ICP records.
+    const dur = form.durationHours * 60 + form.durationMinutes;
     return findAvailableSlots(form.date, svc, dur, appointmentsRef.current, settings, appointment?.id);
   }, [isOpen, form.serviceId, form.date, form.durationHours, form.durationMinutes, settings, appointment?.id]);
 
@@ -418,16 +420,27 @@ export default function AppointmentModal({
     setOutsideHoursConfirmed(false);
     setOverlapWarning(null);
     setOverlapConfirmed(false);
+    setFindNextMsg(null);
   }
 
-  function handleFindNext() {
+  async function handleFindNext() {
     const svc = services.find((s) => s.id === form.serviceId) ?? null;
-    const dur = svc ? svc.totalDurationMinutes : totalDuration;
+    const dur = form.durationHours * 60 + form.durationMinutes;
     setFindingNext(true);
+    setFindNextMsg(null);
+    // Yield to React so "Searching…" renders before the synchronous scan
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
     const result = findNextAvailable(form.date || getTodayString(), svc, dur, appointments, settings, appointment?.id);
     setFindingNext(false);
     if (result) {
+      const changedDate = result.date !== form.date;
       handleSelectSlot(result);
+      if (changedDate) {
+        const label = formatDate(result.date, { weekday: "long", month: "long", day: "numeric" });
+        setFindNextMsg(`Moved to ${label}`);
+      }
+    } else {
+      setFindNextMsg("No availability found in the next 30 days.");
     }
   }
 
@@ -778,48 +791,69 @@ export default function AppointmentModal({
           {/* Smart slot suggestions */}
           {form.serviceId && form.date && (
             <div data-ocid="appointment.slot_suggestions">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-medium">Suggested Times</span>
+              <div className="flex items-center justify-between mb-1.5">
+                <div>
+                  <span className="text-sm font-medium">Suggested Times</span>
+                  <span className="text-xs text-muted-foreground ml-2">
+                    {formatDate(form.date, { weekday: "short", month: "short", day: "numeric" })}
+                  </span>
+                </div>
                 <button
                   type="button"
                   onClick={handleFindNext}
                   disabled={findingNext}
-                  className="text-xs text-accent font-medium hover:underline disabled:opacity-50"
+                  className="text-xs text-accent font-medium hover:underline disabled:opacity-50 flex-shrink-0"
                   data-ocid="appointment.find_next_button"
                 >
-                  {findingNext ? "Searching…" : "Find next available →"}
+                  {findingNext ? "Searching…" : "Next available →"}
                 </button>
               </div>
+              {findNextMsg && (
+                <p className={`text-xs mb-2 px-2 py-1 rounded-md ${findNextMsg.startsWith("No") ? "text-muted-foreground bg-muted" : "text-accent bg-accent/10"}`}>
+                  {findNextMsg}
+                </p>
+              )}
               {slotSuggestions.length === 0 ? (
-                <p className="text-xs text-muted-foreground italic">No open slots on this day — try "Find next available".</p>
+                <p className="text-xs text-muted-foreground italic">No open slots on this day — try "Next available →".</p>
               ) : (
                 <div className="flex flex-col gap-1.5">
-                  {slotSuggestions.slice(0, 6).map((slot) => {
-                    const isSelected = slot.time === form.startTime && slot.date === form.date;
+                  {(() => {
+                    const selectedIdx = slotSuggestions.findIndex((s) => s.time === form.startTime && s.date === form.date);
+                    // Always include the selected slot even if it falls past position 6
+                    const base = slotSuggestions.slice(0, 6);
+                    const selected = selectedIdx >= 6 ? slotSuggestions[selectedIdx] : null;
+                    const visible = selected ? [...base, selected] : base;
                     return (
-                      <button
-                        key={`${slot.date}-${slot.time}`}
-                        type="button"
-                        onClick={() => handleSelectSlot(slot)}
-                        className={`w-full flex items-center justify-between px-3 py-2 rounded-lg border text-left text-sm transition-colors ${
-                          isSelected
-                            ? "border-accent bg-accent/10 text-accent font-medium"
-                            : "border-border bg-card hover:bg-muted text-foreground"
-                        }`}
-                        data-ocid={`appointment.slot_${slot.time}`}
-                      >
-                        <span className="font-medium">{formatTime12(slot.time)}</span>
-                        <span className={`text-xs ${isSelected ? "text-accent/80" : "text-muted-foreground"}`}>
-                          {slot.type === "processing-gap"
-                            ? `fits in ${slot.duringClient}'s processing`
-                            : "open slot"}
-                        </span>
-                      </button>
+                      <>
+                        {visible.map((slot) => {
+                          const isSelected = slot.time === form.startTime && slot.date === form.date;
+                          return (
+                            <button
+                              key={`${slot.date}-${slot.time}`}
+                              type="button"
+                              onClick={() => handleSelectSlot(slot)}
+                              className={`w-full flex items-center justify-between px-3 py-2 rounded-lg border text-left text-sm transition-colors ${
+                                isSelected
+                                  ? "border-accent bg-accent/10 text-accent font-medium"
+                                  : "border-border bg-card hover:bg-muted text-foreground"
+                              }`}
+                              data-ocid={`appointment.slot_${slot.time}`}
+                            >
+                              <span className="font-medium">{formatTime12(slot.time)}</span>
+                              <span className={`text-xs ${isSelected ? "text-accent/80" : "text-muted-foreground"}`}>
+                                {slot.type === "processing-gap"
+                                  ? `in ${slot.duringClient}'s processing gap`
+                                  : "open slot"}
+                              </span>
+                            </button>
+                          );
+                        })}
+                        {slotSuggestions.length > 6 && (
+                          <p className="text-xs text-muted-foreground text-center">+{slotSuggestions.length - 6} more — set time manually above</p>
+                        )}
+                      </>
                     );
-                  })}
-                  {slotSuggestions.length > 6 && (
-                    <p className="text-xs text-muted-foreground text-center">+{slotSuggestions.length - 6} more — adjust time manually</p>
-                  )}
+                  })()}
                 </div>
               )}
             </div>
