@@ -1,5 +1,5 @@
 import { Search, X } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useShallow } from "zustand/shallow";
 import { formatDate, formatTime12 } from "../lib/utils";
@@ -12,6 +12,12 @@ interface Props {
 
 export function GlobalSearch({ onClose }: Props) {
   const [query, setQuery] = useState("");
+
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = prev; };
+  }, []);
   const allAppointments = useAppStore(useShallow((s) => s.appointments));
   const navigate = useNavigate();
   const setPendingCalendarDate = useAppStore((s) => s.setPendingCalendarDate);
@@ -42,7 +48,7 @@ export function GlobalSearch({ onClose }: Props) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex flex-col bg-background"
+      className="fixed inset-0 z-[70] flex flex-col bg-background"
       data-ocid="search.modal"
     >
       {/* Search bar */}

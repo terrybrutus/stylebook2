@@ -396,11 +396,16 @@ export function ServiceModal({ open, service, onClose }: ServiceModalProps) {
 
   useEffect(() => {
     if (!open) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
     const handler = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
     };
     document.addEventListener("keydown", handler);
-    return () => document.removeEventListener("keydown", handler);
+    return () => {
+      document.body.style.overflow = prev;
+      document.removeEventListener("keydown", handler);
+    };
   }, [open, onClose]);
 
   if (!open) return null;
@@ -409,7 +414,7 @@ export function ServiceModal({ open, service, onClose }: ServiceModalProps) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm"
+      className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm"
       onClick={handleBackdrop}
       onKeyDown={(e) => {
         if (e.key === "Escape") onClose();
@@ -448,6 +453,7 @@ export function ServiceModal({ open, service, onClose }: ServiceModalProps) {
           id={`${modalId}-form`}
           onSubmit={handleSubmit}
           className="flex-1 overflow-y-auto px-5 py-4 flex flex-col gap-5"
+          style={{ overscrollBehavior: "contain" }}
         >
           {/* Name */}
           <div className="flex flex-col gap-1.5">

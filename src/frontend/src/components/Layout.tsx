@@ -117,6 +117,27 @@ export function Layout({ children }: LayoutProps) {
           </span>
         </Link>
         <div className="flex items-center gap-1">
+          {/* Undo/redo — visible in header whenever history exists */}
+          {canUndo && (
+            <button
+              type="button"
+              onClick={undo}
+              aria-label="Undo"
+              className="p-2 rounded-full hover:bg-muted transition-colors"
+            >
+              <Undo2 size={18} className="text-foreground" />
+            </button>
+          )}
+          {canRedo && (
+            <button
+              type="button"
+              onClick={redo}
+              aria-label="Redo"
+              className="p-2 rounded-full hover:bg-muted transition-colors"
+            >
+              <Redo2 size={18} className="text-foreground" />
+            </button>
+          )}
           <button
             type="button"
             onClick={() => setShowSearch(true)}
@@ -196,32 +217,6 @@ export function Layout({ children }: LayoutProps) {
           {children}
         </main>
       </div>
-
-      {/* Floating undo/redo pill — mobile, above bottom nav */}
-      {(canUndo || canRedo) && (
-        <div className="md:hidden fixed bottom-20 left-3 z-50 flex gap-1">
-          <button
-            type="button"
-            onClick={undo}
-            disabled={!canUndo}
-            aria-label="Undo"
-            className="w-11 h-11 flex items-center justify-center rounded-full bg-card border border-border shadow transition-opacity"
-            style={{ opacity: canUndo ? 1 : 0.4 }}
-          >
-            <Undo2 size={18} />
-          </button>
-          <button
-            type="button"
-            onClick={redo}
-            disabled={!canRedo}
-            aria-label="Redo"
-            className="w-11 h-11 flex items-center justify-center rounded-full bg-card border border-border shadow transition-opacity"
-            style={{ opacity: canRedo ? 1 : 0.4 }}
-          >
-            <Redo2 size={18} />
-          </button>
-        </div>
-      )}
 
       {/* Mobile bottom tab bar — safe-area-inset-bottom keeps it above iPhone home bar */}
       <nav
