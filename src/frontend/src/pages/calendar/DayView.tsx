@@ -250,7 +250,7 @@ export function DayView({ date, onModalChange }: Props) {
       const schedule = getWorkingScheduleForDate(date, settings);
       let outsideHours: string | undefined;
       if (!schedule.enabled) {
-        outsideHours = `This day is not in your working schedule.`;
+        outsideHours = "This day is not in your working schedule.";
       } else {
         const toMin = (t: string) => { const [h, m] = t.split(":").map(Number); return h * 60 + m; };
         const apptEnd = toMin(newTime) + block.appt.durationMinutes;
