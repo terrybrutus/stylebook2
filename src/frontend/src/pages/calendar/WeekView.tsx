@@ -226,7 +226,8 @@ export function WeekView({ anchorDate, onModalChange, onDayClick }: Props) {
   useEffect(() => {
     const todayIdx = weekDates.findIndex((d) => dateToString(d) === todayStr);
     setMobileStartIdx(todayIdx >= 0 ? Math.min(Math.floor(todayIdx / 3) * 3, 4) : 0);
-  }, [weekDates[0]]);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: todayStr is a stable derived string that never changes within a session
+  }, [weekDates[0], todayStr]);
 
   const visibleDates = isMobilePortrait
     ? weekDates.slice(mobileStartIdx, mobileStartIdx + 3)
@@ -355,7 +356,7 @@ export function WeekView({ anchorDate, onModalChange, onDayClick }: Props) {
       const schedule = getWorkingScheduleForDate(targetDate, settings);
       let outsideHours: string | undefined;
       if (!schedule.enabled) {
-        outsideHours = `That day is not in your working schedule.`;
+        outsideHours = "That day is not in your working schedule.";
       } else {
         const toMin = (t: string) => { const [h, m] = t.split(":").map(Number); return h * 60 + m; };
         const apptEnd = toMin(newTime) + block.appt.durationMinutes;
