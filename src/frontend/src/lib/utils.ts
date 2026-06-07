@@ -317,7 +317,8 @@ export function findAvailableSlots(
   settings: Settings,
   excludeApptId?: string,
 ): SlotSuggestion[] {
-  if (durationMinutes <= 0) return [];
+  const safeDur = Math.round(durationMinutes);
+  if (!Number.isFinite(safeDur) || safeDur <= 0) return [];
   const schedule = getWorkingScheduleForDate(date, settings);
   if (!schedule.enabled) return [];
 
@@ -331,8 +332,8 @@ export function findAvailableSlots(
 
   const suggestions: SlotSuggestion[] = [];
 
-  for (let t = dayStart; t + durationMinutes <= dayEnd; t += 15) {
-    const newBlocks = getNewBlocks(t, service, durationMinutes);
+  for (let t = dayStart; t + safeDur <= dayEnd; t += 15) {
+    const newBlocks = getNewBlocks(t, service, safeDur);
     const newActive = newBlocks.filter((b) => !b.isProcessing);
 
     // Check: no new active block overlaps any existing active block
@@ -387,7 +388,7 @@ export function findNextAvailable(
   maxDays = 30,
 ): SlotSuggestion | null {
   const base = new Date(`${fromDate}T00:00:00`);
-  for (let i = 1; i <= maxDays; i++) {
+  for (let i = 0; i <= maxDays; i++) {
     const d = new Date(base);
     d.setDate(base.getDate() + i);
     const dateStr = dateToString(d);
