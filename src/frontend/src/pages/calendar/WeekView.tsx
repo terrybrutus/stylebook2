@@ -700,7 +700,7 @@ export function WeekView({ anchorDate, onModalChange, onDayClick }: Props) {
       {/* Context menu */}
       {contextMenu && (
         <div
-          className="fixed z-50 bg-card border border-border rounded-xl shadow-xl overflow-hidden"
+          className="fixed z-[65] bg-card border border-border rounded-xl shadow-xl overflow-hidden"
           style={{ left: contextMenu.x, top: contextMenu.y }}
           onClick={(e) => e.stopPropagation()}
           onKeyDown={(e) => e.stopPropagation()}
@@ -741,7 +741,7 @@ export function WeekView({ anchorDate, onModalChange, onDayClick }: Props) {
 
       {/* Drop confirmation dialog */}
       {dropConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/40 backdrop-blur-sm">
+        <div className="fixed inset-0 z-[65] flex items-center justify-center bg-foreground/40 backdrop-blur-sm">
           <div className="bg-card rounded-2xl shadow-2xl p-5 mx-4 max-w-sm w-full">
             <p className="text-sm font-semibold mb-1">Move appointment?</p>
             <p className="text-sm text-muted-foreground mb-2">

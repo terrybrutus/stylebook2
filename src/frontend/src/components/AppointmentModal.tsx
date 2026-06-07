@@ -206,6 +206,14 @@ export default function AppointmentModal({
     });
   }, [isOpen]);
 
+  // Lock body scroll while modal is open (prevents iOS scroll-through)
+  useEffect(() => {
+    if (!isOpen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = prev; };
+  }, [isOpen]);
+
   // Click outside to close suggestions
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -621,7 +629,7 @@ export default function AppointmentModal({
         )}
 
         {/* Scrollable form body */}
-        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4" style={{ overscrollBehavior: "contain" }}>
           {/* Client name with autocomplete */}
           <div className="relative" ref={suggestRef}>
             <Label
