@@ -43,6 +43,7 @@ interface Props {
   anchorDate: Date;
   onModalChange: (state: AppointmentModalState) => void;
   onDayClick?: (date: string) => void;
+  onWeekChange?: (dir: 1 | -1) => void;
 }
 
 interface ContextMenu {
@@ -83,7 +84,7 @@ function getBlockLabel(
   return { label: `${appt.clientName} — ${phase.name}`, isProcessing: false };
 }
 
-export function WeekView({ anchorDate, onModalChange, onDayClick }: Props) {
+export function WeekView({ anchorDate, onModalChange, onDayClick, onWeekChange }: Props) {
   const { settings, allAppointments, deleteAppointment } = useAppStore(
     useShallow((s) => ({
       settings: s.settings,
@@ -252,8 +253,22 @@ export function WeekView({ anchorDate, onModalChange, onDayClick }: Props) {
     const dx = e.changedTouches[0].clientX - touchStartX.current;
     const dy = e.changedTouches[0].clientY - touchStartY.current;
     if (Math.abs(dx) < Math.abs(dy) || Math.abs(dx) < 40) return;
-    if (dx < 0) changeMobileStart(Math.min(mobileStartIdx + 3, 4));
-    if (dx > 0) changeMobileStart(Math.max(mobileStartIdx - 3, 0));
+    if (dx < 0) {
+      if (mobileStartIdx + 3 < 7) {
+        changeMobileStart(Math.min(mobileStartIdx + 3, 4));
+      } else {
+        onWeekChange?.(1);
+        setMobileStartIdx(0);
+      }
+    }
+    if (dx > 0) {
+      if (mobileStartIdx > 0) {
+        changeMobileStart(Math.max(mobileStartIdx - 3, 0));
+      } else {
+        onWeekChange?.(-1);
+        setMobileStartIdx(0);
+      }
+    }
   }
 
   // Drag helpers
@@ -481,11 +496,18 @@ export function WeekView({ anchorDate, onModalChange, onDayClick }: Props) {
       <div className="flex flex-shrink-0 border-b border-border bg-card">
         {/* Time column spacer — on mobile shows prev arrow */}
         <div className="w-14 flex-shrink-0 border-r border-border flex items-center justify-center">
-          {isMobilePortrait && mobileStartIdx > 0 && (
+          {isMobilePortrait && (
             <button
               type="button"
               className="w-full h-full flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
-              onClick={() => changeMobileStart(mobileStartIdx - 3)}
+              onClick={() => {
+                if (mobileStartIdx > 0) {
+                  changeMobileStart(Math.max(mobileStartIdx - 3, 0));
+                } else {
+                  onWeekChange?.(-1);
+                  setMobileStartIdx(0);
+                }
+              }}
               aria-label="Previous days"
             >
               <span className="text-base leading-none">‹</span>
@@ -528,11 +550,19 @@ export function WeekView({ anchorDate, onModalChange, onDayClick }: Props) {
                 </span>
               )}
               {/* Next arrow on last visible day — mobile only */}
-              {isMobilePortrait && isLast && mobileStartIdx + 3 < 7 && (
+              {isMobilePortrait && isLast && (
                 <button
                   type="button"
                   className="absolute right-0 top-0 bottom-0 flex items-center pr-0.5"
-                  onClick={(e) => { e.stopPropagation(); changeMobileStart(mobileStartIdx + 3); }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (mobileStartIdx + 3 < 7) {
+                      changeMobileStart(mobileStartIdx + 3);
+                    } else {
+                      onWeekChange?.(1);
+                      setMobileStartIdx(0);
+                    }
+                  }}
                   aria-label="Next days"
                 >
                   <span className="text-base leading-none text-muted-foreground">›</span>

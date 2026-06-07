@@ -262,6 +262,7 @@ export default function Calendar() {
             anchorDate={d}
             onModalChange={handleModalChange}
             onDayClick={handleDayClick}
+            onWeekChange={(dir) => setCurrentDate((date) => addWeeks(date, dir))}
           />
         )}
         {view === "month" && (
