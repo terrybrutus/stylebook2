@@ -239,16 +239,14 @@ export default function AppointmentModal({
     }));
   }, []);
 
-  // Compute slot suggestions whenever service + date are both set
-  // Uses refs so the memo deps don't include the full appointments/services arrays
+  // biome-ignore lint/correctness/useExhaustiveDependencies: appointments/services consumed via refs; durationHours/Minutes only used when no service is selected (manual duration fallback)
   const slotSuggestions = useMemo<SlotSuggestion[]>(() => {
     if (!isOpen || !form.serviceId || !form.date) return [];
     const svc = servicesRef.current.find((s) => s.id === form.serviceId) ?? null;
     const dur = svc ? svc.totalDurationMinutes : form.durationHours * 60 + form.durationMinutes;
     if (dur <= 0) return [];
     return findAvailableSlots(form.date, svc, dur, appointmentsRef.current, settings, appointment?.id);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, form.serviceId, form.date, settings, appointment?.id]);
+  }, [isOpen, form.serviceId, form.date, form.durationHours, form.durationMinutes, settings, appointment?.id]);
 
   if (!isOpen) return null;
 

@@ -223,10 +223,10 @@ export function WeekView({ anchorDate, onModalChange, onDayClick }: Props) {
   }, []);
 
   // When anchor week changes (e.g. Today button), reset mobile window to show today
+  // biome-ignore lint/correctness/useExhaustiveDependencies: weekDates[0] is the identity dep for the week; todayStr never changes within a session
   useEffect(() => {
     const todayIdx = weekDates.findIndex((d) => dateToString(d) === todayStr);
     setMobileStartIdx(todayIdx >= 0 ? Math.min(Math.floor(todayIdx / 3) * 3, 4) : 0);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: todayStr is a stable derived string that never changes within a session
   }, [weekDates[0], todayStr]);
 
   const visibleDates = isMobilePortrait
