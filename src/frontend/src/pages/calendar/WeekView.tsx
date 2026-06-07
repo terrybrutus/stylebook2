@@ -114,7 +114,7 @@ export function WeekView({ anchorDate, onModalChange, onDayClick }: Props) {
 
   // Mobile 3-day swipe state — reset window to show today when anchorDate changes
   const [mobileStartIdx, setMobileStartIdx] = useState(() => {
-    const todayIdx = weekDates.indexOf(dateToString(new Date()));
+    const todayIdx = weekDates.indexOf(todayStr);
     return todayIdx >= 0 ? Math.min(Math.floor(todayIdx / 3) * 3, 4) : 0;
   });
   const [slideClass, setSlideClass] = useState('');
@@ -224,7 +224,7 @@ export function WeekView({ anchorDate, onModalChange, onDayClick }: Props) {
 
   // When anchor week changes (e.g. Today button), reset mobile window to show today
   useEffect(() => {
-    const todayIdx = weekDates.indexOf(dateToString(new Date()));
+    const todayIdx = weekDates.indexOf(todayStr);
     setMobileStartIdx(todayIdx >= 0 ? Math.min(Math.floor(todayIdx / 3) * 3, 4) : 0);
   }, [weekDates[0]]);
 
