@@ -3,14 +3,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { AlertTriangle, Info, X } from "lucide-react";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useShallow } from "zustand/shallow";
 import {
   createAppointment,
   getClientNames,
   updateAppointment,
 } from "../lib/api";
-import { doBlocksOverlap, formatDate, formatDuration, formatTime12, getTodayString, getWorkingScheduleForDate } from "../lib/utils";
+import { doBlocksOverlap, findAvailableSlots, findNextAvailable, formatDate, formatDuration, formatTime12, getTodayString, getWorkingScheduleForDate } from "../lib/utils";
 import { useAppStore } from "../store/useAppStore";
 import type {
   Appointment,
@@ -18,6 +18,7 @@ import type {
   PhaseInstance,
   Service,
 } from "../types";
+import type { SlotSuggestion } from "../lib/utils";
 
 interface Props {
   isOpen: boolean;
@@ -113,6 +114,7 @@ export default function AppointmentModal({
   const [overlapConfirmed, setOverlapConfirmed] = useState(false);
   const [outsideHoursWarning, setOutsideHoursWarning] = useState<string | null>(null);
   const [outsideHoursConfirmed, setOutsideHoursConfirmed] = useState(false);
+  const [findingNext, setFindingNext] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [recurEnabled, setRecurEnabled] = useState(false);
   const [recurWeeks, setRecurWeeks] = useState(1);
@@ -236,6 +238,17 @@ export default function AppointmentModal({
       phases: f.phases.map((p, i) => (i === idx ? { ...p, name } : p)),
     }));
   }, []);
+
+  // Compute slot suggestions whenever service + date are both set
+  // Uses refs so the memo deps don't include the full appointments/services arrays
+  const slotSuggestions = useMemo<SlotSuggestion[]>(() => {
+    if (!isOpen || !form.serviceId || !form.date) return [];
+    const svc = servicesRef.current.find((s) => s.id === form.serviceId) ?? null;
+    const dur = svc ? svc.totalDurationMinutes : form.durationHours * 60 + form.durationMinutes;
+    if (dur <= 0) return [];
+    return findAvailableSlots(form.date, svc, dur, appointmentsRef.current, settings, appointment?.id);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, form.serviceId, form.date, settings, appointment?.id]);
 
   if (!isOpen) return null;
 
@@ -396,6 +409,28 @@ export default function AppointmentModal({
       return `This appointment is outside your working hours for ${dayName} (${formatTime12(schedule.start)}–${formatTime12(schedule.end)}).`;
     }
     return null;
+  }
+
+  function handleSelectSlot(slot: SlotSuggestion) {
+    setForm((f) => {
+      const newPhases = f.phases.length > 0 ? recalcPhaseStarts(f.phases, slot.time) : f.phases;
+      return { ...f, date: slot.date, startTime: slot.time, phases: newPhases };
+    });
+    setOutsideHoursWarning(null);
+    setOutsideHoursConfirmed(false);
+    setOverlapWarning(null);
+    setOverlapConfirmed(false);
+  }
+
+  function handleFindNext() {
+    const svc = services.find((s) => s.id === form.serviceId) ?? null;
+    const dur = svc ? svc.totalDurationMinutes : totalDuration;
+    setFindingNext(true);
+    const result = findNextAvailable(form.date || getTodayString(), svc, dur, appointments, settings, appointment?.id);
+    setFindingNext(false);
+    if (result) {
+      handleSelectSlot(result);
+    }
   }
 
   async function handleSubmit(skipOverlapCheck = false, skipHoursCheck = false) {
@@ -741,6 +776,56 @@ export default function AppointmentModal({
               />
             </div>
           </div>
+
+          {/* Smart slot suggestions */}
+          {form.serviceId && form.date && (
+            <div data-ocid="appointment.slot_suggestions">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-medium">Suggested Times</span>
+                <button
+                  type="button"
+                  onClick={handleFindNext}
+                  disabled={findingNext}
+                  className="text-xs text-accent font-medium hover:underline disabled:opacity-50"
+                  data-ocid="appointment.find_next_button"
+                >
+                  {findingNext ? "Searching…" : "Find next available →"}
+                </button>
+              </div>
+              {slotSuggestions.length === 0 ? (
+                <p className="text-xs text-muted-foreground italic">No open slots on this day — try "Find next available".</p>
+              ) : (
+                <div className="flex flex-col gap-1.5">
+                  {slotSuggestions.slice(0, 6).map((slot) => {
+                    const isSelected = slot.time === form.startTime && slot.date === form.date;
+                    return (
+                      <button
+                        key={`${slot.date}-${slot.time}`}
+                        type="button"
+                        onClick={() => handleSelectSlot(slot)}
+                        className={`w-full flex items-center justify-between px-3 py-2 rounded-lg border text-left text-sm transition-colors ${
+                          isSelected
+                            ? "border-accent bg-accent/10 text-accent font-medium"
+                            : "border-border bg-card hover:bg-muted text-foreground"
+                        }`}
+                        data-ocid={`appointment.slot_${slot.time}`}
+                      >
+                        <span className="font-medium">{formatTime12(slot.time)}</span>
+                        <span className={`text-xs ${isSelected ? "text-accent/80" : "text-muted-foreground"}`}>
+                          {slot.type === "processing-gap"
+                            ? `fits in ${slot.duringClient}'s processing`
+                            : "open slot"}
+                        </span>
+                      </button>
+                    );
+                  })}
+                  {slotSuggestions.length > 6 && (
+                    <p className="text-xs text-muted-foreground text-center">+{slotSuggestions.length - 6} more — adjust time manually</p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Duration */}
           <div>
