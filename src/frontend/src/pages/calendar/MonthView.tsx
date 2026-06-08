@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useShallow } from "zustand/shallow";
 import * as api from "../../lib/api";
-import { dateToString, getMonthGrid, hexToRgba } from "../../lib/utils";
+import { dateToString, formatTime12, getMonthGrid, getWorkingScheduleForDate, hexToRgba } from "../../lib/utils";
 import { useAppStore } from "../../store/useAppStore";
 import type { Appointment, AppointmentModalState } from "../../types";
 
@@ -22,9 +22,13 @@ const DAY_NAMES_MON = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const DAY_NAMES_SUN = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 export function MonthView({ year, month, onDayClick, onModalChange }: Props) {
-  const settings = useAppStore(useShallow((s) => s.settings));
-  const appointments = useAppStore(useShallow((s) => s.appointments));
-  const deleteAppointment = useAppStore((s) => s.deleteAppointment);
+  const { settings, appointments, deleteAppointment } = useAppStore(
+    useShallow((s) => ({
+      settings: s.settings,
+      appointments: s.appointments,
+      deleteAppointment: s.deleteAppointment,
+    })),
+  );
   const todayStr = new Date().toISOString().slice(0, 10);
   const [contextMenu, setContextMenu] = useState<ContextMenu | null>(null);
 
@@ -66,41 +70,45 @@ export function MonthView({ year, month, onDayClick, onModalChange }: Props) {
           const isCurrentMonth = date.getMonth() === month;
           const isToday = dateStr === todayStr;
           const dayAppts = getAppts(dateStr);
+          const sched = getWorkingScheduleForDate(dateStr, settings);
+          const isWorkingDay = sched.enabled;
+          const sortedAppts = [...dayAppts].sort((a, b) => a.startTime.localeCompare(b.startTime));
+          const visibleAppts = sortedAppts.slice(0, 3);
+          const hiddenCount = sortedAppts.length - visibleAppts.length;
 
           return (
             <button
               key={dateStr}
               type="button"
-              className={`border-r border-b border-border p-1 cursor-pointer hover:bg-muted/30 transition-colors flex flex-col gap-0.5 overflow-hidden min-h-[72px] text-left w-full ${
-                !isCurrentMonth ? "bg-muted/10" : "bg-white"
+              className={`border-r border-b border-border p-1 cursor-pointer hover:bg-muted/30 transition-colors flex flex-col gap-0.5 overflow-hidden min-h-[80px] text-left w-full ${
+                !isCurrentMonth ? "bg-muted/15" : !isWorkingDay ? "bg-muted/10" : "bg-background"
               } ${i % 7 === 0 ? "border-l border-border" : ""}`}
               onClick={() => onDayClick(dateStr)}
+              onContextMenu={(e) => e.preventDefault()}
               data-ocid={`calendar.month.day.${i + 1}`}
             >
-              {/* Day number + count */}
-              <div className="flex items-center justify-between px-0.5">
-                {dayAppts.length > 0 ? (
-                  <span className="inline-flex items-center justify-center min-w-[16px] h-4 px-1 rounded-full bg-accent text-accent-foreground text-[9px] font-bold leading-none">
-                    {dayAppts.length}
-                  </span>
-                ) : (
-                  <span />
-                )}
+              {/* Day number */}
+              <div className="flex items-center justify-between px-0.5 mb-0.5">
                 <span
-                  className={`text-xs font-medium w-6 h-6 flex items-center justify-center rounded-full ${
+                  className={`text-xs font-semibold w-6 h-6 flex items-center justify-center rounded-full ${
                     isToday
                       ? "bg-accent text-accent-foreground font-bold"
-                      : isCurrentMonth
+                      : isCurrentMonth && isWorkingDay
                         ? "text-foreground"
                         : "text-muted-foreground/50"
                   }`}
                 >
                   {date.getDate()}
                 </span>
+                {dayAppts.length > 0 && (
+                  <span className="inline-flex items-center justify-center min-w-[16px] h-4 px-1 rounded-full bg-accent text-accent-foreground text-[9px] font-bold leading-none">
+                    {dayAppts.length}
+                  </span>
+                )}
               </div>
 
               {/* Appointment pills */}
-              {dayAppts.slice(0, 3).map((appt) => (
+              {visibleAppts.map((appt) => (
                 <MonthPill
                   key={appt.id}
                   appt={appt}
@@ -116,9 +124,9 @@ export function MonthView({ year, month, onDayClick, onModalChange }: Props) {
                   onLongPress={(x, y) => setContextMenu({ x, y, appointment: appt })}
                 />
               ))}
-              {dayAppts.length > 3 && (
-                <span className="text-[9px] text-muted-foreground px-1">
-                  +{dayAppts.length - 3} more
+              {hiddenCount > 0 && (
+                <span className="text-[10px] text-muted-foreground px-1 font-medium">
+                  +{hiddenCount} more
                 </span>
               )}
             </button>
@@ -178,8 +186,8 @@ function MonthPill({
   return (
     <button
       type="button"
-      className="rounded px-1 py-0.5 text-[9px] font-medium truncate leading-tight cursor-pointer hover:opacity-90 text-left w-full"
-      style={{ backgroundColor: hexToRgba(appt.color, 0.75), color: "#222" }}
+      className="rounded px-1.5 py-1 text-left w-full cursor-pointer hover:opacity-90 flex flex-col gap-0"
+      style={{ backgroundColor: hexToRgba(appt.color, 0.8), color: "#222" }}
       onClick={onEdit}
       onContextMenu={onContextMenu}
       onTouchStart={(e) => {
@@ -190,7 +198,8 @@ function MonthPill({
       onTouchMove={() => { if (timerRef.current) clearTimeout(timerRef.current); }}
       data-ocid="appointment.pill"
     >
-      {appt.clientName}
+      <span className="text-[10px] font-bold leading-tight truncate">{appt.clientName}</span>
+      <span className="text-[9px] leading-tight opacity-75 truncate">{formatTime12(appt.startTime)} · {appt.serviceName}</span>
     </button>
   );
 }

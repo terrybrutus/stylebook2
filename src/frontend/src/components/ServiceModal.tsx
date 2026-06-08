@@ -218,6 +218,8 @@ export function ServiceModal({ open, service, onClose }: ServiceModalProps) {
   const [hexInput, setHexInput] = useState(PRESET_COLORS[0]);
   const [category, setCategory] = useState<ServiceCategory>("single");
   const [phases, setPhases] = useState<PhaseWithId[]>([makePhase()]);
+  const [singleDurH, setSingleDurH] = useState(0);
+  const [singleDurM, setSingleDurM] = useState(30);
   const [finishingLabel, setFinishingLabel] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
@@ -263,6 +265,9 @@ export function ServiceModal({ open, service, onClose }: ServiceModalProps) {
       setHexInput(currentService.color);
       setCategory(currentService.category);
       setFinishingLabel(currentService.finishingLabel ?? "");
+      const dur = currentService.totalDurationMinutes ?? 30;
+      setSingleDurH(Math.floor(dur / 60));
+      setSingleDurM(dur % 60);
       setPhases(
         currentService.phases.length > 0
           ? currentService.phases.map((p) => ({ ...p, _id: nextPhaseId() }))
@@ -277,6 +282,8 @@ export function ServiceModal({ open, service, onClose }: ServiceModalProps) {
       setCategory("single");
       setPhases([makePhase()]);
       setFinishingLabel("");
+      setSingleDurH(0);
+      setSingleDurM(30);
     }
     setError("");
     setSubmitting(false);
@@ -338,7 +345,7 @@ export function ServiceModal({ open, service, onClose }: ServiceModalProps) {
       const total =
         category === "multi"
           ? activePhaseDefs.reduce((sum, p) => sum + p.durationMinutes, 0)
-          : Math.max(15, priceNum > 0 ? 30 : 15);
+          : Math.max(5, singleDurH * 60 + singleDurM);
 
       const input: ServiceInput = {
         name: name.trim(),
@@ -378,6 +385,8 @@ export function ServiceModal({ open, service, onClose }: ServiceModalProps) {
       color,
       category,
       phases,
+      singleDurH,
+      singleDurM,
       finishingLabel,
       service,
       addService,
@@ -582,6 +591,38 @@ export function ServiceModal({ open, service, onClose }: ServiceModalProps) {
               </button>
             </div>
           </div>
+
+          {/* Duration — single phase only */}
+          {category === "single" && (
+            <div className="flex flex-col gap-1.5">
+              <span className="text-sm font-medium">Duration</span>
+              <div className="flex items-center gap-2">
+                <select
+                  value={singleDurH}
+                  onChange={(e) => setSingleDurH(Number(e.target.value))}
+                  className="rounded-xl border border-input bg-card px-3 py-2.5 text-base focus:outline-none focus:ring-2 focus:ring-accent/50"
+                  style={{ fontSize: "16px" }}
+                  aria-label="Hours"
+                >
+                  {Array.from({ length: 13 }, (_, i) => i).map((h) => (
+                    // biome-ignore lint/suspicious/noArrayIndexKey: static numeric range
+                    <option key={h} value={h}>{h}h</option>
+                  ))}
+                </select>
+                <select
+                  value={singleDurM}
+                  onChange={(e) => setSingleDurM(Number(e.target.value))}
+                  className="rounded-xl border border-input bg-card px-3 py-2.5 text-base focus:outline-none focus:ring-2 focus:ring-accent/50"
+                  style={{ fontSize: "16px" }}
+                  aria-label="Minutes"
+                >
+                  {[0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55].map((m) => (
+                    <option key={m} value={m}>{m}m</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          )}
 
           {/* Phase builder — only for multi */}
           {category === "multi" && (

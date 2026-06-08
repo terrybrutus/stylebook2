@@ -67,25 +67,19 @@ interface AppState {
   setLoading: (key: keyof LoadingFlags, value: boolean) => void;
 }
 
-const DEFAULT_WORKING_DAY = (enabled: boolean): import("../types").WorkingDaySchedule => ({
-  enabled,
-  start: "08:00",
-  end: "19:00",
-});
-
 const DEFAULT_SETTINGS: Settings = {
   startWeekOnMonday: true,
   darkMode: false,
-  workingHoursStart: "08:00",
+  workingHoursStart: "07:00",
   workingHoursEnd: "19:00",
   workingDays: {
-    sun: DEFAULT_WORKING_DAY(false),
-    mon: DEFAULT_WORKING_DAY(true),
-    tue: DEFAULT_WORKING_DAY(true),
-    wed: DEFAULT_WORKING_DAY(true),
-    thu: DEFAULT_WORKING_DAY(true),
-    fri: DEFAULT_WORKING_DAY(true),
-    sat: DEFAULT_WORKING_DAY(false),
+    sun: { enabled: false, start: "09:00", end: "13:00" },
+    mon: { enabled: true,  start: "07:00", end: "10:00" },
+    tue: { enabled: false, start: "07:00", end: "10:00" },
+    wed: { enabled: true,  start: "16:00", end: "19:00" },
+    thu: { enabled: false, start: "07:00", end: "10:00" },
+    fri: { enabled: true,  start: "07:00", end: "10:00" },
+    sat: { enabled: true,  start: "09:00", end: "13:00" },
   },
 };
 

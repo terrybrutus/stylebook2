@@ -296,6 +296,7 @@ export function WeekView({ anchorDate, onModalChange, onDayClick, onWeekChange }
 
   function handleBlockPointerDown(e: React.PointerEvent, block: RenderBlock, dateStr: string) {
     if (block.isProcessing) return;
+    if (e.button !== 0) return;
     e.stopPropagation();
     const isTouch = e.pointerType === "touch";
     const target = e.currentTarget as Element;
@@ -368,12 +369,52 @@ export function WeekView({ anchorDate, onModalChange, onDayClick, onWeekChange }
     const totalMin = getSnappedMinutes(e.clientY, colEl, drag.offsetMinutes);
     const newTime = minutesToTimeStr(totalMin);
     if (newTime !== block.appt.startTime || targetDate !== block.appt.date) {
+      const toMin = (t: string) => { const [h, m] = t.split(":").map(Number); return h * 60 + m; };
+      // Check active-vs-active overlap — prevent drop if it conflicts
+      const newStartMin = toMin(newTime);
+      const newActiveBlocks: { start: number; end: number }[] = [];
+      if (block.appt.phases.length === 0) {
+        newActiveBlocks.push({ start: newStartMin, end: newStartMin + block.appt.durationMinutes });
+      } else {
+        let cursor = newStartMin;
+        for (const p of block.appt.phases) {
+          if (p.phaseType === "active") {
+            newActiveBlocks.push({ start: cursor, end: cursor + p.durationMinutes });
+          }
+          cursor += p.durationMinutes;
+        }
+      }
+      let hasConflict = false;
+      const dayAppts = allAppointments.filter((a) => a.date === targetDate);
+      for (const existing of dayAppts) {
+        if (existing.id === block.appt.id) continue;
+        const existingActiveBlocks: { start: number; end: number }[] = [];
+        if (existing.phases.length === 0) {
+          const s = toMin(existing.startTime);
+          existingActiveBlocks.push({ start: s, end: s + existing.durationMinutes });
+        } else {
+          for (const p of existing.phases) {
+            if (p.phaseType === "active") {
+              const tp = p.startTime.includes("T") ? p.startTime.split("T")[1].slice(0, 5) : p.startTime;
+              const s = toMin(tp);
+              existingActiveBlocks.push({ start: s, end: s + p.durationMinutes });
+            }
+          }
+        }
+        for (const na of newActiveBlocks) {
+          for (const ea of existingActiveBlocks) {
+            if (na.start < ea.end && na.end > ea.start) { hasConflict = true; break; }
+          }
+          if (hasConflict) break;
+        }
+        if (hasConflict) break;
+      }
+      if (hasConflict) return;
       const schedule = getWorkingScheduleForDate(targetDate, settings);
       let outsideHours: string | undefined;
       if (!schedule.enabled) {
         outsideHours = "That day is not in your working schedule.";
       } else {
-        const toMin = (t: string) => { const [h, m] = t.split(":").map(Number); return h * 60 + m; };
         const apptEnd = toMin(newTime) + block.appt.durationMinutes;
         if (toMin(newTime) < toMin(schedule.start) || apptEnd > toMin(schedule.end)) {
           outsideHours = `Outside working hours (${formatTime12(schedule.start)}–${formatTime12(schedule.end)}).`;
@@ -395,20 +436,25 @@ export function WeekView({ anchorDate, onModalChange, onDayClick, onWeekChange }
     const newPhases = appt.phases.length > 0 ? recalcPhaseStarts(appt.phases, newTime) : appt.phases;
     const updated: Appointment = { ...appt, date: newDate, startTime: newTime, phases: newPhases, updatedAt: new Date().toISOString() };
     updateAppointmentInStore(updated);
-    api.updateAppointment(appt.id, {
-      clientName: updated.clientName,
-      serviceId: updated.serviceId,
-      serviceName: updated.serviceName,
-      date: newDate,
-      startTime: newTime,
-      durationMinutes: updated.durationMinutes,
-      price: updated.price,
-      phoneNumber: updated.phoneNumber,
-      notes: updated.notes,
-      phases: newPhases,
-      color: updated.color,
-    }).catch(console.error);
     setDropConfirm(null);
+    try {
+      await api.updateAppointment(appt.id, {
+        clientName: updated.clientName,
+        serviceId: updated.serviceId,
+        serviceName: updated.serviceName,
+        date: newDate,
+        startTime: newTime,
+        durationMinutes: updated.durationMinutes,
+        price: updated.price,
+        phoneNumber: updated.phoneNumber,
+        notes: updated.notes,
+        phases: newPhases,
+        color: updated.color,
+      });
+    } catch (err) {
+      console.error("Drop save failed, reverting", err);
+      updateAppointmentInStore(appt);
+    }
   }
 
   function buildBlocks(dateStr: string): RenderBlock[] {
@@ -630,6 +676,33 @@ export function WeekView({ anchorDate, onModalChange, onDayClick, onWeekChange }
                 data-ocid={`week.day_column.${dateStr}`}
                 ref={(el) => { if (el) colRefs.current.set(dateStr, el); else colRefs.current.delete(dateStr); }}
               >
+                {/* Non-working hours overlay */}
+                {(() => {
+                  const sched = getWorkingScheduleForDate(dateStr, settings);
+                  const toMin = (t: string) => { const [h, m] = t.split(":").map(Number); return h * 60 + m; };
+                  if (!sched.enabled) {
+                    return <div className="absolute inset-0 bg-muted/25 pointer-events-none z-[2]" />;
+                  }
+                  const dayStartMin = toMin(sched.start);
+                  const dayEndMin = toMin(sched.end);
+                  return (
+                    <>
+                      {dayStartMin > startMinutes && (
+                        <div
+                          className="absolute left-0 right-0 top-0 bg-muted/25 pointer-events-none z-[2]"
+                          style={{ height: minutesToPx(dayStartMin, startMinutes) }}
+                        />
+                      )}
+                      {dayEndMin < endMinutes && (
+                        <div
+                          className="absolute left-0 right-0 bg-muted/25 pointer-events-none z-[2]"
+                          style={{ top: minutesToPx(dayEndMin, startMinutes), bottom: 0 }}
+                        />
+                      )}
+                    </>
+                  );
+                })()}
+
                 {/* Horizontal guide lines across ALL columns including today */}
                 {timeSlots.map((slot) => {
                   const [sh, sm] = slot.split(":").map(Number);
@@ -659,7 +732,8 @@ export function WeekView({ anchorDate, onModalChange, onDayClick, onWeekChange }
                       style={{ top, height: MIN_PX * 30, zIndex: 1 }}
                       role="button"
                       tabIndex={0}
-                      onClick={() => handleSlotClick(dateStr, slot)}
+                      onClick={(e) => { if (e.button === 0) handleSlotClick(dateStr, slot); }}
+                      onContextMenu={(e) => e.preventDefault()}
                       onKeyDown={(e) => {
                         if (e.key === "Enter" || e.key === " ")
                           handleSlotClick(dateStr, slot);

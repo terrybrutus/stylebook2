@@ -189,6 +189,7 @@ export function DayView({ date, onModalChange }: Props) {
 
   function handleBlockPointerDown(e: React.PointerEvent, block: RenderBlock) {
     if (block.isProcessing) return;
+    if (e.button !== 0) return;
     e.stopPropagation();
     const col = dayColRef.current;
     if (!col) return;
@@ -247,12 +248,51 @@ export function DayView({ date, onModalChange }: Props) {
     const totalMin = getSnappedMinutes(e.clientY, drag.offsetMinutes);
     const newTime = minutesToTimeStr(totalMin);
     if (newTime !== block.appt.startTime) {
+      const toMin = (t: string) => { const [h, m] = t.split(":").map(Number); return h * 60 + m; };
+      // Check active-vs-active overlap — prevent drop if it conflicts with another appt's active phases
+      const newStartMin = toMin(newTime);
+      const newActiveBlocks: { start: number; end: number }[] = [];
+      if (block.appt.phases.length === 0) {
+        newActiveBlocks.push({ start: newStartMin, end: newStartMin + block.appt.durationMinutes });
+      } else {
+        let cursor = newStartMin;
+        for (const p of block.appt.phases) {
+          if (p.phaseType === "active") {
+            newActiveBlocks.push({ start: cursor, end: cursor + p.durationMinutes });
+          }
+          cursor += p.durationMinutes;
+        }
+      }
+      let hasConflict = false;
+      for (const existing of appointments) {
+        if (existing.id === block.appt.id) continue;
+        const existingActiveBlocks: { start: number; end: number }[] = [];
+        if (existing.phases.length === 0) {
+          const s = toMin(existing.startTime);
+          existingActiveBlocks.push({ start: s, end: s + existing.durationMinutes });
+        } else {
+          for (const p of existing.phases) {
+            if (p.phaseType === "active") {
+              const tp = p.startTime.includes("T") ? p.startTime.split("T")[1].slice(0, 5) : p.startTime;
+              const s = toMin(tp);
+              existingActiveBlocks.push({ start: s, end: s + p.durationMinutes });
+            }
+          }
+        }
+        for (const na of newActiveBlocks) {
+          for (const ea of existingActiveBlocks) {
+            if (na.start < ea.end && na.end > ea.start) { hasConflict = true; break; }
+          }
+          if (hasConflict) break;
+        }
+        if (hasConflict) break;
+      }
+      if (hasConflict) return; // silently prevent — active blocks can't overlap
       const schedule = getWorkingScheduleForDate(date, settings);
       let outsideHours: string | undefined;
       if (!schedule.enabled) {
         outsideHours = "This day is not in your working schedule.";
       } else {
-        const toMin = (t: string) => { const [h, m] = t.split(":").map(Number); return h * 60 + m; };
         const apptEnd = toMin(newTime) + block.appt.durationMinutes;
         if (toMin(newTime) < toMin(schedule.start) || apptEnd > toMin(schedule.end)) {
           outsideHours = `Outside working hours (${formatTime12(schedule.start)}–${formatTime12(schedule.end)}).`;
@@ -274,20 +314,25 @@ export function DayView({ date, onModalChange }: Props) {
     const newPhases = appt.phases.length > 0 ? recalcPhaseStarts(appt.phases, newTime) : appt.phases;
     const updated: Appointment = { ...appt, startTime: newTime, phases: newPhases, updatedAt: new Date().toISOString() };
     updateAppointment(updated);
-    api.updateAppointment(appt.id, {
-      clientName: updated.clientName,
-      serviceId: updated.serviceId,
-      serviceName: updated.serviceName,
-      date: updated.date,
-      startTime: newTime,
-      durationMinutes: updated.durationMinutes,
-      price: updated.price,
-      phoneNumber: updated.phoneNumber,
-      notes: updated.notes,
-      phases: newPhases,
-      color: updated.color,
-    }).catch(console.error);
     setDropConfirm(null);
+    try {
+      await api.updateAppointment(appt.id, {
+        clientName: updated.clientName,
+        serviceId: updated.serviceId,
+        serviceName: updated.serviceName,
+        date: updated.date,
+        startTime: newTime,
+        durationMinutes: updated.durationMinutes,
+        price: updated.price,
+        phoneNumber: updated.phoneNumber,
+        notes: updated.notes,
+        phases: newPhases,
+        color: updated.color,
+      });
+    } catch (err) {
+      console.error("Drop save failed, reverting", err);
+      updateAppointment(appt);
+    }
   }
 
   const rawBlocks: Omit<RenderBlock, 'leftPct' | 'zIdx'>[] = [];
@@ -395,6 +440,35 @@ export function DayView({ date, onModalChange }: Props) {
         className="flex-1 relative bg-white cursor-pointer"
         style={{ height: totalPx }}
       >
+        {/* Non-working hours overlay */}
+        {(() => {
+          const sched = getWorkingScheduleForDate(date, settings);
+          const toMin = (t: string) => { const [h, m] = t.split(":").map(Number); return h * 60 + m; };
+          if (!sched.enabled) {
+            return <div className="absolute inset-0 bg-muted/25 pointer-events-none z-[2]" />;
+          }
+          const globalStart = startHour * 60;
+          const globalEnd = endHour * 60;
+          const dayStart = toMin(sched.start);
+          const dayEnd = toMin(sched.end);
+          return (
+            <>
+              {dayStart > globalStart && (
+                <div
+                  className="absolute left-0 right-0 top-0 bg-muted/25 pointer-events-none z-[2]"
+                  style={{ height: ((dayStart - globalStart) / 60) * HOUR_PX }}
+                />
+              )}
+              {dayEnd < globalEnd && (
+                <div
+                  className="absolute left-0 right-0 bg-muted/25 pointer-events-none z-[2]"
+                  style={{ top: ((dayEnd - globalStart) / 60) * HOUR_PX, bottom: 0 }}
+                />
+              )}
+            </>
+          );
+        })()}
+
         {/* Horizontal guide lines at every 30-min mark — on ALL columns including today */}
         {timeSlots.map((slot) => {
           const top = timeToPixels(slot, startHour);
@@ -419,7 +493,8 @@ export function DayView({ date, onModalChange }: Props) {
               style={{ top, height: 30, zIndex: 1 }}
               role="button"
               tabIndex={0}
-              onClick={() => handleSlotClick(slot)}
+              onClick={(e) => { if (e.button === 0) handleSlotClick(slot); }}
+              onContextMenu={(e) => e.preventDefault()}
               onKeyDown={(e) => {
                 if (e.key === "Enter" || e.key === " ") handleSlotClick(slot);
               }}
