@@ -655,7 +655,7 @@ export default function AppointmentModal({
                 onClick={() => {
                   setOverlapConfirmed(true);
                   setOverlapWarning(null);
-                  handleSubmit(true);
+                  handleSubmit(true, true);
                 }}
                 data-ocid="appointment.overlap_confirm"
               >
@@ -725,6 +725,24 @@ export default function AppointmentModal({
               </div>
             )}
           </div>
+
+          {/* Client contact info — read-only */}
+          {(() => {
+            const contact = form.clientName.trim()
+              ? clientContacts.find((c) => c.name === form.clientName.trim())
+              : null;
+            if (!contact?.phone && !contact?.notes) return null;
+            return (
+              <div className="rounded-md bg-muted/40 px-3 py-2 -mt-2 space-y-1">
+                {contact.phone && (
+                  <p className="text-xs text-muted-foreground">Phone: {contact.phone}</p>
+                )}
+                {contact.notes && (
+                  <p className="text-xs text-muted-foreground">Notes: {contact.notes}</p>
+                )}
+              </div>
+            );
+          })()}
 
           {/* Service */}
           <div>
