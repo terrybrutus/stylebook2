@@ -681,7 +681,7 @@ export function WeekView({ anchorDate, onModalChange, onDayClick, onWeekChange }
                   const sched = getWorkingScheduleForDate(dateStr, settings);
                   const toMin = (t: string) => { const [h, m] = t.split(":").map(Number); return h * 60 + m; };
                   if (!sched.enabled) {
-                    return <div className="absolute inset-0 bg-muted/25 pointer-events-none z-[2]" />;
+                    return <div className="absolute inset-0 pointer-events-none z-[2]" style={{ backgroundColor: "rgba(0,0,0,0.13)" }} />;
                   }
                   const dayStartMin = toMin(sched.start);
                   const dayEndMin = toMin(sched.end);
@@ -689,14 +689,14 @@ export function WeekView({ anchorDate, onModalChange, onDayClick, onWeekChange }
                     <>
                       {dayStartMin > startMinutes && (
                         <div
-                          className="absolute left-0 right-0 top-0 bg-muted/25 pointer-events-none z-[2]"
-                          style={{ height: minutesToPx(dayStartMin, startMinutes) }}
+                          className="absolute left-0 right-0 top-0 pointer-events-none z-[2]"
+                          style={{ height: minutesToPx(dayStartMin, startMinutes), backgroundColor: "rgba(0,0,0,0.1)" }}
                         />
                       )}
                       {dayEndMin < endMinutes && (
                         <div
-                          className="absolute left-0 right-0 bg-muted/25 pointer-events-none z-[2]"
-                          style={{ top: minutesToPx(dayEndMin, startMinutes), bottom: 0 }}
+                          className="absolute left-0 right-0 pointer-events-none z-[2]"
+                          style={{ top: minutesToPx(dayEndMin, startMinutes), bottom: 0, backgroundColor: "rgba(0,0,0,0.1)" }}
                         />
                       )}
                     </>

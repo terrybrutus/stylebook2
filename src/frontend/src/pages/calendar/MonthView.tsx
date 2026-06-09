@@ -81,7 +81,7 @@ export function MonthView({ year, month, onDayClick, onModalChange }: Props) {
               key={dateStr}
               type="button"
               className={`border-r border-b border-border p-1 cursor-pointer hover:bg-muted/30 transition-colors flex flex-col gap-0.5 overflow-hidden min-h-[80px] text-left w-full ${
-                !isCurrentMonth ? "bg-muted/15" : !isWorkingDay ? "bg-muted/10" : "bg-background"
+                !isCurrentMonth ? "bg-muted/40" : !isWorkingDay ? "bg-muted/30" : "bg-background"
               } ${i % 7 === 0 ? "border-l border-border" : ""}`}
               onClick={() => onDayClick(dateStr)}
               onContextMenu={(e) => e.preventDefault()}
