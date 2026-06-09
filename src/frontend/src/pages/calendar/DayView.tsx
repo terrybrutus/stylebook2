@@ -445,7 +445,7 @@ export function DayView({ date, onModalChange }: Props) {
           const sched = getWorkingScheduleForDate(date, settings);
           const toMin = (t: string) => { const [h, m] = t.split(":").map(Number); return h * 60 + m; };
           if (!sched.enabled) {
-            return <div className="absolute inset-0 bg-muted/25 pointer-events-none z-[2]" />;
+            return <div className="absolute inset-0 pointer-events-none z-[2]" style={{ backgroundColor: "rgba(0,0,0,0.13)" }} />;
           }
           const globalStart = startHour * 60;
           const globalEnd = endHour * 60;
@@ -455,14 +455,14 @@ export function DayView({ date, onModalChange }: Props) {
             <>
               {dayStart > globalStart && (
                 <div
-                  className="absolute left-0 right-0 top-0 bg-muted/25 pointer-events-none z-[2]"
-                  style={{ height: ((dayStart - globalStart) / 60) * HOUR_PX }}
+                  className="absolute left-0 right-0 top-0 pointer-events-none z-[2]"
+                  style={{ height: ((dayStart - globalStart) / 60) * HOUR_PX, backgroundColor: "rgba(0,0,0,0.1)" }}
                 />
               )}
               {dayEnd < globalEnd && (
                 <div
-                  className="absolute left-0 right-0 bg-muted/25 pointer-events-none z-[2]"
-                  style={{ top: ((dayEnd - globalStart) / 60) * HOUR_PX, bottom: 0 }}
+                  className="absolute left-0 right-0 pointer-events-none z-[2]"
+                  style={{ top: ((dayEnd - globalStart) / 60) * HOUR_PX, bottom: 0, backgroundColor: "rgba(0,0,0,0.1)" }}
                 />
               )}
             </>
