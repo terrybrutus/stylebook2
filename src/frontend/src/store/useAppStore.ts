@@ -79,7 +79,7 @@ const DEFAULT_SETTINGS: Settings = {
     wed: { enabled: true,  start: "16:00", end: "19:00" },
     thu: { enabled: false, start: "07:00", end: "10:00" },
     fri: { enabled: true,  start: "07:00", end: "10:00" },
-    sat: { enabled: true,  start: "09:00", end: "13:00" },
+    sat: { enabled: true,  start: "09:00", end: "13:00", biweekly: true, biweeklyRef: "2026-06-07" },
   },
 };
 
@@ -232,6 +232,14 @@ export const useAppStore = create<AppState>()(
     }),
     {
       name: "stylebook-store",
+      version: 2,
+      migrate: (persisted) => {
+        const s = persisted as { settings?: Partial<typeof DEFAULT_SETTINGS>; clientContacts?: unknown[] };
+        return {
+          ...s,
+          settings: { ...DEFAULT_SETTINGS, ...(s.settings ?? {}), workingDays: DEFAULT_SETTINGS.workingDays },
+        };
+      },
       partialize: (state) => ({
         settings: state.settings,
         clientContacts: state.clientContacts,
