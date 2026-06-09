@@ -81,9 +81,14 @@ export function MonthView({ year, month, onDayClick, onModalChange }: Props) {
             <button
               key={dateStr}
               type="button"
-              className={`border-r border-b border-border p-1 cursor-pointer hover:bg-muted/30 transition-colors flex flex-col gap-0.5 overflow-hidden min-h-[80px] text-left w-full ${
-                !isCurrentMonth ? "bg-muted/40" : !isWorkingDay ? "bg-muted/30" : "bg-background"
-              } ${i % 7 === 0 ? "border-l border-border" : ""}`}
+              className={`border-r border-b border-border p-1 cursor-pointer transition-colors flex flex-col gap-0.5 overflow-hidden min-h-[80px] text-left w-full ${i % 7 === 0 ? "border-l border-border" : ""}`}
+              style={{
+                backgroundColor: !isCurrentMonth
+                  ? "rgba(0,0,0,0.08)"
+                  : !isWorkingDay
+                    ? "rgba(0,0,0,0.18)"
+                    : undefined,
+              }}
               onClick={() => onDayClick(dateStr)}
               onContextMenu={(e) => e.preventDefault()}
               data-ocid={`calendar.month.day.${i + 1}`}
@@ -102,8 +107,8 @@ export function MonthView({ year, month, onDayClick, onModalChange }: Props) {
                   {date.getDate()}
                 </span>
                 {dayAppts.length > 0 && (
-                  <span className="inline-flex items-center justify-center min-w-[16px] h-4 px-1 rounded-full bg-accent text-accent-foreground text-[9px] font-bold leading-none">
-                    {dayAppts.length}
+                  <span className="text-[9px] font-medium text-muted-foreground leading-none px-1 py-0.5 rounded bg-muted/60">
+                    {dayAppts.length} {dayAppts.length === 1 ? "appt" : "appts"}
                   </span>
                 )}
               </div>
