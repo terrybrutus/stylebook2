@@ -608,19 +608,20 @@ function ToggleRow({
 }
 
 function Toggle({ checked, small }: { checked: boolean; small?: boolean }) {
+  // track: w-8(32px)/h-5(20px) small or w-11(44px)/h-6(24px) regular
+  // dot: 14px or 18px; off at x=3, on at track-3-dotW = 15px or 23px
   const w = small ? "w-8 h-5" : "w-11 h-6";
   const dot = small ? "w-[14px] h-[14px]" : "w-[18px] h-[18px]";
-  const on = small ? "translate-x-[14px]" : "translate-x-[22px]";
-  const off = small ? "translate-x-[3px]" : "translate-x-[3px]";
+  const on = small ? "translate-x-[15px]" : "translate-x-[23px]";
   return (
     <div
       className={`relative shrink-0 ${w} rounded-full transition-colors duration-200 ${
-        checked ? "bg-accent" : "bg-muted"
+        checked ? "bg-accent" : "bg-muted-foreground/30"
       }`}
     >
       <span
-        className={`absolute top-[3px] ${dot} rounded-full bg-white shadow-sm transition-transform duration-200 ${
-          checked ? on : off
+        className={`absolute top-[3px] ${dot} rounded-full bg-white shadow transition-transform duration-200 ${
+          checked ? on : "translate-x-[3px]"
         }`}
       />
     </div>

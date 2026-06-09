@@ -605,8 +605,8 @@ export function WeekView({ anchorDate, onModalChange, onDayClick, onWeekChange }
                 {dayNum}
               </span>
               {apptCount > 0 && (
-                <span className="inline-flex items-center justify-center min-w-[16px] h-4 px-1 rounded-full bg-accent text-accent-foreground text-[9px] font-bold leading-none mt-0.5">
-                  {apptCount}
+                <span className="text-[9px] font-medium text-muted-foreground leading-none px-1 py-0.5 rounded bg-muted/60 mt-0.5">
+                  {apptCount} {apptCount === 1 ? "appt" : "appts"}
                 </span>
               )}
               {/* Next arrow on last visible day — mobile only */}
@@ -633,9 +633,9 @@ export function WeekView({ anchorDate, onModalChange, onDayClick, onWeekChange }
         })}
       </div>
 
-      {/* Scrollable time grid */}
+      {/* Scrollable time grid — overflow-y-scroll so scrollbar always reserves space, keeping header columns aligned */}
       <div
-        className="flex flex-1 overflow-auto"
+        className="flex flex-1 overflow-y-scroll overflow-x-hidden"
         style={{ touchAction: 'pan-y', overscrollBehavior: 'none' }}
         data-ocid="calendar.week_scroll"
       >
@@ -695,7 +695,7 @@ export function WeekView({ anchorDate, onModalChange, onDayClick, onWeekChange }
                   const sched = getWorkingScheduleForDate(dateStr, settings);
                   const toMin = (t: string) => { const [h, m] = t.split(":").map(Number); return h * 60 + m; };
                   if (!sched.enabled) {
-                    return <div className="absolute inset-0 pointer-events-none z-[2]" style={{ backgroundColor: "rgba(0,0,0,0.13)" }} />;
+                    return <div className="absolute inset-0 pointer-events-none z-[2]" style={{ backgroundColor: "rgba(0,0,0,0.18)" }} />;
                   }
                   const dayStartMin = toMin(sched.start);
                   const dayEndMin = toMin(sched.end);
@@ -704,13 +704,13 @@ export function WeekView({ anchorDate, onModalChange, onDayClick, onWeekChange }
                       {dayStartMin > startMinutes && (
                         <div
                           className="absolute left-0 right-0 top-0 pointer-events-none z-[2]"
-                          style={{ height: minutesToPx(dayStartMin, startMinutes), backgroundColor: "rgba(0,0,0,0.1)" }}
+                          style={{ height: minutesToPx(dayStartMin, startMinutes), backgroundColor: "rgba(0,0,0,0.12)" }}
                         />
                       )}
                       {dayEndMin < endMinutes && (
                         <div
                           className="absolute left-0 right-0 pointer-events-none z-[2]"
-                          style={{ top: minutesToPx(dayEndMin, startMinutes), bottom: 0, backgroundColor: "rgba(0,0,0,0.1)" }}
+                          style={{ top: minutesToPx(dayEndMin, startMinutes), bottom: 0, backgroundColor: "rgba(0,0,0,0.12)" }}
                         />
                       )}
                     </>
