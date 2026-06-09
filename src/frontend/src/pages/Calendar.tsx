@@ -21,13 +21,17 @@ import { MonthView } from "./calendar/MonthView";
 import { WeekView } from "./calendar/WeekView";
 
 function getTodayStr(): string {
-  return new Date().toISOString().slice(0, 10);
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
 function addDays(dateStr: string, n: number): string {
   const d = new Date(`${dateStr}T00:00:00`);
   d.setDate(d.getDate() + n);
-  return d.toISOString().slice(0, 10);
+  const y = d.getFullYear();
+  const mo = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${mo}-${day}`;
 }
 
 function addWeeks(dateStr: string, n: number): string {
@@ -37,7 +41,10 @@ function addWeeks(dateStr: string, n: number): string {
 function addMonths(dateStr: string, n: number): string {
   const d = new Date(`${dateStr}T00:00:00`);
   d.setMonth(d.getMonth() + n);
-  return d.toISOString().slice(0, 10);
+  const y = d.getFullYear();
+  const mo = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${mo}-${day}`;
 }
 
 function formatDateHeader(view: CalendarView, dateStr: string): string {

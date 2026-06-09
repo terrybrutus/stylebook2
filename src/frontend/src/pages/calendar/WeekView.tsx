@@ -257,16 +257,28 @@ export function WeekView({ anchorDate, onModalChange, onDayClick, onWeekChange }
       if (mobileStartIdx + 3 < 7) {
         changeMobileStart(Math.min(mobileStartIdx + 3, 4));
       } else {
-        onWeekChange?.(1);
-        setMobileStartIdx(0);
+        // Animate forward before changing week
+        setSlideClass("translate-x-4 opacity-50");
+        setTimeout(() => {
+          onWeekChange?.(1);
+          setMobileStartIdx(0);
+          setSlideClass("opacity-100 translate-x-0 transition-all duration-150");
+          setTimeout(() => setSlideClass(""), 150);
+        }, 50);
       }
     }
     if (dx > 0) {
       if (mobileStartIdx > 0) {
         changeMobileStart(Math.max(mobileStartIdx - 3, 0));
       } else {
-        onWeekChange?.(-1);
-        setMobileStartIdx(0);
+        // Animate backward before changing week
+        setSlideClass("-translate-x-4 opacity-50");
+        setTimeout(() => {
+          onWeekChange?.(-1);
+          setMobileStartIdx(0);
+          setSlideClass("opacity-100 translate-x-0 transition-all duration-150");
+          setTimeout(() => setSlideClass(""), 150);
+        }, 50);
       }
     }
   }
@@ -535,11 +547,13 @@ export function WeekView({ anchorDate, onModalChange, onDayClick, onWeekChange }
   return (
     <div
       className="flex flex-col flex-1 overflow-hidden select-none"
-      onTouchStart={isMobilePortrait ? handleSwipeStart : undefined}
-      onTouchEnd={isMobilePortrait ? handleSwipeEnd : undefined}
     >
-      {/* Day header row — sticky above the scroll area */}
-      <div className="flex flex-shrink-0 border-b border-border bg-card">
+      {/* Day header row — sticky above the scroll area; swipe handlers here to avoid pan-y interception */}
+      <div
+        className="flex flex-shrink-0 border-b border-border bg-card"
+        onTouchStart={isMobilePortrait ? handleSwipeStart : undefined}
+        onTouchEnd={isMobilePortrait ? handleSwipeEnd : undefined}
+      >
         {/* Time column spacer — on mobile shows prev arrow */}
         <div className="w-14 flex-shrink-0 border-r border-border flex items-center justify-center">
           {isMobilePortrait && (

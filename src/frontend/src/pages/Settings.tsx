@@ -151,6 +151,18 @@ export default function Settings() {
     updateSettings({ workingDays: newDays });
   }
 
+  function toggleBiweekly(key: DayKey) {
+    const current = getDay(key);
+    const nowBiweekly = !current.biweekly;
+    const updated = {
+      ...current,
+      biweekly: nowBiweekly,
+      biweeklyRef: nowBiweekly ? (current.biweeklyRef ?? "2026-06-07") : undefined,
+    };
+    const newDays = { ...(settings.workingDays ?? defaultWorkingDays()), [key]: updated };
+    updateSettings({ workingDays: newDays });
+  }
+
   // Multi-delete
   const filteredAppts = [...appointments]
     .sort((a, b) => b.date.localeCompare(a.date) || a.startTime.localeCompare(b.startTime))
@@ -241,24 +253,34 @@ export default function Settings() {
                       </span>
                       {/* Time pickers */}
                       {day.enabled ? (
-                        <div className="flex items-center gap-1.5 flex-1">
-                          <input
-                            type="time"
-                            value={day.start}
-                            onChange={(e) => handleDayTimeChange(key, "start", e.target.value)}
-                            className="text-xs border border-input rounded-lg px-2 py-1 bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-accent/50 focus:border-accent transition-colors flex-1 min-w-0"
-                            style={{ fontSize: "14px" }}
-                            data-ocid={`settings.day_${key}_start`}
-                          />
-                          <span className="text-xs text-muted-foreground flex-shrink-0">–</span>
-                          <input
-                            type="time"
-                            value={day.end}
-                            onChange={(e) => handleDayTimeChange(key, "end", e.target.value)}
-                            className="text-xs border border-input rounded-lg px-2 py-1 bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-accent/50 focus:border-accent transition-colors flex-1 min-w-0"
-                            style={{ fontSize: "14px" }}
-                            data-ocid={`settings.day_${key}_end`}
-                          />
+                        <div className="flex flex-col gap-1 flex-1">
+                          <div className="flex items-center gap-1.5">
+                            <input
+                              type="time"
+                              value={day.start}
+                              onChange={(e) => handleDayTimeChange(key, "start", e.target.value)}
+                              className="text-xs border border-input rounded-lg px-2 py-1 bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-accent/50 focus:border-accent transition-colors flex-1 min-w-0"
+                              style={{ fontSize: "14px" }}
+                              data-ocid={`settings.day_${key}_start`}
+                            />
+                            <span className="text-xs text-muted-foreground flex-shrink-0">–</span>
+                            <input
+                              type="time"
+                              value={day.end}
+                              onChange={(e) => handleDayTimeChange(key, "end", e.target.value)}
+                              className="text-xs border border-input rounded-lg px-2 py-1 bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-accent/50 focus:border-accent transition-colors flex-1 min-w-0"
+                              style={{ fontSize: "14px" }}
+                              data-ocid={`settings.day_${key}_end`}
+                            />
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => toggleBiweekly(key)}
+                            className={`text-[10px] font-medium px-2 py-0.5 rounded-full border self-start transition-colors ${day.biweekly ? "border-accent text-accent bg-accent/10" : "border-border text-muted-foreground hover:border-accent/50"}`}
+                            data-ocid={`settings.day_${key}_biweekly`}
+                          >
+                            {day.biweekly ? "Every other week ✓" : "Every week"}
+                          </button>
                         </div>
                       ) : (
                         <span className="text-xs text-muted-foreground">Off</span>
@@ -525,13 +547,13 @@ export default function Settings() {
 
 function defaultWorkingDays() {
   return {
-    sun: { enabled: false, start: "08:00", end: "19:00" },
-    mon: { enabled: true, start: "08:00", end: "19:00" },
-    tue: { enabled: true, start: "08:00", end: "19:00" },
-    wed: { enabled: true, start: "08:00", end: "19:00" },
-    thu: { enabled: true, start: "08:00", end: "19:00" },
-    fri: { enabled: true, start: "08:00", end: "19:00" },
-    sat: { enabled: false, start: "08:00", end: "19:00" },
+    sun: { enabled: false, start: "09:00", end: "13:00" },
+    mon: { enabled: true,  start: "07:00", end: "10:00" },
+    tue: { enabled: false, start: "07:00", end: "10:00" },
+    wed: { enabled: true,  start: "16:00", end: "19:00" },
+    thu: { enabled: false, start: "07:00", end: "10:00" },
+    fri: { enabled: true,  start: "07:00", end: "10:00" },
+    sat: { enabled: true,  start: "09:00", end: "13:00", biweekly: true, biweeklyRef: "2026-06-07" },
   };
 }
 

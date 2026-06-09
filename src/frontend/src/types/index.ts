@@ -75,6 +75,8 @@ export interface WorkingDaySchedule {
   enabled: boolean;
   start: string; // HH:MM
   end: string;   // HH:MM
+  biweekly?: boolean;   // if true, alternates every other week
+  biweeklyRef?: string; // YYYY-MM-DD of a known ON week
 }
 
 export interface Settings {

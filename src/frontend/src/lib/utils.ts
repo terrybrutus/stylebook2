@@ -198,12 +198,21 @@ export function getWorkingScheduleForDate(
   const dow = new Date(`${dateStr}T00:00:00`).getDay();
   const keys = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"] as const;
   const schedule = settings.workingDays?.[keys[dow]];
-  if (schedule) return schedule;
-  return {
-    start: settings.workingHoursStart,
-    end: settings.workingHoursEnd,
-    enabled: dow > 0 && dow < 6,
-  };
+  if (!schedule) {
+    return {
+      start: settings.workingHoursStart,
+      end: settings.workingHoursEnd,
+      enabled: dow > 0 && dow < 6,
+    };
+  }
+  if (schedule.biweekly && schedule.biweeklyRef && schedule.enabled) {
+    const ref = new Date(`${schedule.biweeklyRef}T00:00:00`).getTime();
+    const target = new Date(`${dateStr}T00:00:00`).getTime();
+    const weeksDiff = Math.round((target - ref) / (7 * 24 * 60 * 60 * 1000));
+    const isOnWeek = weeksDiff % 2 === 0;
+    return { start: schedule.start, end: schedule.end, enabled: isOnWeek };
+  }
+  return { start: schedule.start, end: schedule.end, enabled: schedule.enabled };
 }
 
 /** Recalculate phase start times from a new base start time */
