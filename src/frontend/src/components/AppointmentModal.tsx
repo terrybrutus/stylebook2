@@ -1019,34 +1019,13 @@ export default function AppointmentModal({
             </div>
           )}
 
-          {/* Phone */}
-          <div>
-            <Label
-              htmlFor="appt-phone"
-              className="text-sm font-medium mb-1.5 block"
-            >
-              Phone (optional)
-            </Label>
-            <Input
-              id="appt-phone"
-              type="tel"
-              value={form.phone}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, phone: e.target.value }))
-              }
-              placeholder="e.g. (555) 123-4567"
-              className="text-base"
-              data-ocid="appointment.phone_input"
-            />
-          </div>
-
-          {/* Notes */}
+          {/* Appointment Notes */}
           <div>
             <Label
               htmlFor="appt-notes"
               className="text-sm font-medium mb-1.5 block"
             >
-              Notes (optional)
+              Appointment Notes <span className="text-xs font-normal text-muted-foreground">(this visit only)</span>
             </Label>
             <Textarea
               id="appt-notes"
