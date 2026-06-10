@@ -426,6 +426,10 @@ export default function AppointmentModal({
   async function handleFindNext() {
     const svc = services.find((s) => s.id === form.serviceId) ?? null;
     const dur = form.durationHours * 60 + form.durationMinutes;
+    if (dur === 0) {
+      setFindNextMsg("No duration set — edit this service in Services to add a duration.");
+      return;
+    }
     setFindingNext(true);
     setFindNextMsg(null);
     // Yield to React so "Searching…" renders before the synchronous scan
@@ -832,7 +836,11 @@ export default function AppointmentModal({
                 </p>
               )}
               {slotSuggestions.length === 0 ? (
-                <p className="text-xs text-muted-foreground italic">No open slots on this day — try "Next available →".</p>
+                <p className="text-xs text-muted-foreground italic">
+                  {form.durationHours === 0 && form.durationMinutes === 0
+                    ? "No duration set — edit this service in Services to add a duration."
+                    : "No open slots on this day — try \"Next available →\"."}
+                </p>
               ) : (
                 <div className="flex flex-col gap-1.5">
                   {(() => {

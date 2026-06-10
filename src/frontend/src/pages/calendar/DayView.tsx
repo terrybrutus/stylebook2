@@ -7,6 +7,7 @@ import {
   formatTime12,
   generateTimeSlots,
   getCurrentTimePixels,
+  getEffectiveGridHours,
   getWorkingScheduleForDate,
   hexToRgba,
   hueRotate,
@@ -103,8 +104,7 @@ export function DayView({ date, onModalChange }: Props) {
     [allAppointments, date],
   );
 
-  const startHour = Number(settings.workingHoursStart.split(":")[0]);
-  const endHour = Number(settings.workingHoursEnd.split(":")[0]);
+  const { startHour, endHour } = getEffectiveGridHours(settings);
   const timeSlots = generateTimeSlots(startHour, endHour);
   const totalPx = (endHour - startHour) * HOUR_PX;
 

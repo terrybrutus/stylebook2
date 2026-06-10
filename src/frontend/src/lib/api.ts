@@ -363,13 +363,16 @@ export async function getServices(): Promise<Service[]> {
 
 async function seedDefaultServices(actor: ActorInstance): Promise<void> {
   for (const svc of DEFAULT_SERVICES) {
+    const backendPhases = svc.category === "single"
+      ? [{ phaseLabel: svc.name, durationMinutes: BigInt(svc.totalDurationMinutes ?? 0), phaseType: toBackendPhaseType("active") }]
+      : svc.phases.map(toBackendPhaseDef);
     await actor.createService({
       name: svc.name,
       isMultiPhase: svc.category === "multi",
       colorHex: svc.color,
       price: svc.price,
       finishingLabel: svc.finishingLabel,
-      phases: svc.phases.map(toBackendPhaseDef),
+      phases: backendPhases,
     });
   }
 }
@@ -377,13 +380,18 @@ async function seedDefaultServices(actor: ActorInstance): Promise<void> {
 export async function createService(input: ServiceInput): Promise<Service> {
   try {
     const actor = getActor();
+    // Single-phase services have no phase definitions — store a synthetic phase so ICP
+    // can compute totalDurationMinutes (it sums phases; an empty array → 0).
+    const backendPhases = input.category === "single"
+      ? [{ phaseLabel: input.name, durationMinutes: BigInt(input.totalDurationMinutes ?? 0), phaseType: toBackendPhaseType("active") }]
+      : input.phases.map(toBackendPhaseDef);
     const result = await actor.createService({
       name: input.name,
       isMultiPhase: input.category === "multi",
       colorHex: input.color,
       price: input.price,
       finishingLabel: input.finishingLabel,
-      phases: input.phases.map(toBackendPhaseDef),
+      phases: backendPhases,
     });
     return mapBackendService(result);
   } catch {
@@ -408,6 +416,9 @@ export async function updateService(
     const current = services.find((s) => s.id === id);
     if (!current) throw new Error(`Service ${id} not found`);
     const merged = { ...current, ...input };
+    const backendPhases = merged.category === "single"
+      ? [{ phaseLabel: merged.name, durationMinutes: BigInt(merged.totalDurationMinutes ?? 0), phaseType: toBackendPhaseType("active") }]
+      : merged.phases.map(toBackendPhaseDef);
     const result = await actor.updateService({
       id,
       name: merged.name,
@@ -415,7 +426,7 @@ export async function updateService(
       colorHex: merged.color,
       price: merged.price,
       finishingLabel: merged.finishingLabel,
-      phases: merged.phases.map(toBackendPhaseDef),
+      phases: backendPhases,
     });
     if (!result) throw new Error(`Update failed for service ${id}`);
     return mapBackendService(result);
