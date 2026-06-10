@@ -190,6 +190,21 @@ export function getMonthGrid(
   return days;
 }
 
+/** Compute effective calendar grid bounds — expands to cover all enabled working day hours */
+export function getEffectiveGridHours(settings: Settings): { startHour: number; endHour: number } {
+  const globalStart = Number(settings.workingHoursStart.split(":")[0]);
+  const globalEnd = Number(settings.workingHoursEnd.split(":")[0]);
+  if (!settings.workingDays) return { startHour: globalStart, endHour: globalEnd };
+  const enabled = Object.values(settings.workingDays).filter((d) => d.enabled);
+  if (enabled.length === 0) return { startHour: globalStart, endHour: globalEnd };
+  const minStart = Math.min(...enabled.map((d) => Number(d.start.split(":")[0])));
+  const maxEnd = Math.max(...enabled.map((d) => {
+    const [h, m] = d.end.split(":").map(Number);
+    return m > 0 ? h + 1 : h;
+  }));
+  return { startHour: Math.min(globalStart, minStart), endHour: Math.max(globalEnd, maxEnd) };
+}
+
 /** Get working hours for a specific date, falling back to global hours */
 export function getWorkingScheduleForDate(
   dateStr: string,

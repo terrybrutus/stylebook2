@@ -6,6 +6,7 @@ import {
   formatPrice,
   formatTime12,
   generateTimeSlots,
+  getEffectiveGridHours,
   getWeekDates,
   getWorkingScheduleForDate,
   hexToRgba,
@@ -95,8 +96,7 @@ export function WeekView({ anchorDate, onModalChange, onDayClick, onWeekChange }
 
   const updateAppointmentInStore = useAppStore((s) => s.updateAppointment);
 
-  const startHour = Number(settings.workingHoursStart.split(":")[0]);
-  const endHour = Number(settings.workingHoursEnd.split(":")[0]);
+  const { startHour, endHour } = getEffectiveGridHours(settings);
   const startMinutes = startHour * 60;
   const endMinutes = endHour * 60;
   const totalMinutes = endMinutes - startMinutes;

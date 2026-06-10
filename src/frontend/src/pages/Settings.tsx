@@ -5,24 +5,26 @@ import { useShallow } from "zustand/shallow";
 import * as api from "../lib/api";
 import { formatDate, formatTime12 } from "../lib/utils";
 import { useAppStore } from "../store/useAppStore";
-import type { Appointment, WorkingDaySchedule } from "../types";
+import type { Appointment, ClientContact, WorkingDaySchedule } from "../types";
 
-function buildCSV(appointments: Appointment[]): string {
+function buildCSV(appointments: Appointment[], clientContacts: ClientContact[]): string {
+  const contactMap = new Map(clientContacts.map((c) => [c.name, c]));
   const header = "Date,Time,Client,Service,Duration (min),Price,Phone,Notes";
   const rows = [...appointments]
     .sort((a, b) => a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime))
-    .map((a) =>
-      [
+    .map((a) => {
+      const contact = contactMap.get(a.clientName);
+      return [
         a.date,
         a.startTime,
         `"${a.clientName.replace(/"/g, '""')}"`,
         `"${a.serviceName.replace(/"/g, '""')}"`,
         a.durationMinutes,
         a.price,
-        a.phoneNumber ?? "",
-        `"${(a.notes ?? "").replace(/"/g, '""')}"`,
-      ].join(","),
-    );
+        contact?.phone ?? "",
+        `"${((contact?.notes ?? a.notes ?? "")).replace(/"/g, '""')}"`,
+      ].join(",");
+    });
   return [header, ...rows].join("\n");
 }
 
@@ -81,6 +83,7 @@ const DAY_LABELS: Record<DayKey, string> = {
 export default function Settings() {
   const settings = useAppStore(useShallow((s) => s.settings));
   const appointments = useAppStore(useShallow((s) => s.appointments));
+  const clientContacts = useAppStore(useShallow((s) => s.clientContacts));
   const updateSettings = useAppStore((s) => s.updateSettings);
   const deleteAppointments = useAppStore((s) => s.deleteAppointments);
   const { setTheme } = useTheme();
@@ -119,7 +122,7 @@ export default function Settings() {
   }
 
   function handleDownloadCSV() {
-    const csv = buildCSV(appointments);
+    const csv = buildCSV(appointments, clientContacts);
     const blob = new Blob([csv], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -292,7 +295,7 @@ export default function Settings() {
               {/* Calendar grid range note */}
               <div className="border-t border-border px-4 py-2.5">
                 <p className="text-[11px] text-muted-foreground">
-                  Calendar grid still uses the global range below. The schedule above is used for booking warnings.
+                  The calendar grid automatically expands to show all working hours. The range below sets the minimum visible range — the grid widens if any working day falls outside it.
                 </p>
               </div>
               {/* Global range (still needed for calendar grid) */}
