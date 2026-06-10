@@ -119,8 +119,14 @@ export function WeekView({ anchorDate, onModalChange, onDayClick, onWeekChange }
     return todayIdx >= 0 ? Math.min(Math.floor(todayIdx / 3) * 3, 4) : 0;
   });
   const [slideClass, setSlideClass] = useState('');
-  const touchStartX = useRef<number>(0);
-  const touchStartY = useRef<number>(0);
+
+  // Refs for swipe handling — keep current values accessible inside native event listeners
+  const outerRef = useRef<HTMLDivElement>(null);
+  const swipeTouchRef = useRef<{ startX: number; startY: number; isHorizontal: boolean; decided: boolean } | null>(null);
+  const mobileStartIdxRef = useRef(mobileStartIdx);
+  mobileStartIdxRef.current = mobileStartIdx;
+  const onWeekChangeRef = useRef(onWeekChange);
+  onWeekChangeRef.current = onWeekChange;
 
   // Column refs for drag-and-drop
   const colRefs = useRef<Map<string, HTMLDivElement>>(new Map());
@@ -234,8 +240,8 @@ export function WeekView({ anchorDate, onModalChange, onDayClick, onWeekChange }
     ? weekDates.slice(mobileStartIdx, mobileStartIdx + 3)
     : weekDates;
 
-  function changeMobileStart(newIdx: number) {
-    const dir = newIdx > mobileStartIdx ? 'translate-x-4' : '-translate-x-4';
+  function changeMobileStart(newIdx: number, currentIdx: number) {
+    const dir = newIdx > currentIdx ? 'translate-x-4' : '-translate-x-4';
     setSlideClass(`${dir} opacity-50`);
     setTimeout(() => {
       setMobileStartIdx(newIdx);
@@ -244,44 +250,65 @@ export function WeekView({ anchorDate, onModalChange, onDayClick, onWeekChange }
     }, 50);
   }
 
-  function handleSwipeStart(e: React.TouchEvent) {
-    touchStartX.current = e.touches[0].clientX;
-    touchStartY.current = e.touches[0].clientY;
-  }
+  // Native swipe handler — must be non-passive so we can preventDefault() on horizontal
+  // gestures before the browser's pan-y handler claims them and fires touchcancel.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: all state accessed via refs; effect only re-wires on mobile/desktop switch
+  useEffect(() => {
+    if (!isMobilePortrait) return;
+    const el = outerRef.current;
+    if (!el) return;
 
-  function handleSwipeEnd(e: React.TouchEvent) {
-    const dx = e.changedTouches[0].clientX - touchStartX.current;
-    const dy = e.changedTouches[0].clientY - touchStartY.current;
-    if (Math.abs(dx) < Math.abs(dy) || Math.abs(dx) < 40) return;
-    if (dx < 0) {
-      if (mobileStartIdx + 3 < 7) {
-        changeMobileStart(Math.min(mobileStartIdx + 3, 4));
+    function onTouchStart(e: TouchEvent) {
+      swipeTouchRef.current = { startX: e.touches[0].clientX, startY: e.touches[0].clientY, isHorizontal: false, decided: false };
+    }
+    function onTouchMove(e: TouchEvent) {
+      const s = swipeTouchRef.current;
+      if (!s) return;
+      if (!s.decided) {
+        const dx = Math.abs(e.touches[0].clientX - s.startX);
+        const dy = Math.abs(e.touches[0].clientY - s.startY);
+        if (dx > 6 || dy > 6) { s.decided = true; s.isHorizontal = dx > dy; }
+      }
+      // Prevent browser pan-y from claiming this gesture when it's horizontal
+      if (s.isHorizontal) e.preventDefault();
+    }
+    function onTouchEnd(e: TouchEvent) {
+      const s = swipeTouchRef.current;
+      swipeTouchRef.current = null;
+      if (!s || !s.decided) return;
+      const dx = e.changedTouches[0].clientX - s.startX;
+      const dy = e.changedTouches[0].clientY - s.startY;
+      if (Math.abs(dx) < Math.abs(dy) || Math.abs(dx) < 40) return;
+      const idx = mobileStartIdxRef.current;
+      if (dx < 0) {
+        if (idx + 3 < 7) {
+          changeMobileStart(Math.min(idx + 3, 4), idx);
+        } else {
+          setSlideClass("translate-x-4 opacity-50");
+          setTimeout(() => { onWeekChangeRef.current?.(1); setMobileStartIdx(0); setSlideClass("opacity-100 translate-x-0 transition-all duration-150"); setTimeout(() => setSlideClass(""), 150); }, 50);
+        }
       } else {
-        // Animate forward before changing week
-        setSlideClass("translate-x-4 opacity-50");
-        setTimeout(() => {
-          onWeekChange?.(1);
-          setMobileStartIdx(0);
-          setSlideClass("opacity-100 translate-x-0 transition-all duration-150");
-          setTimeout(() => setSlideClass(""), 150);
-        }, 50);
+        if (idx > 0) {
+          changeMobileStart(Math.max(idx - 3, 0), idx);
+        } else {
+          setSlideClass("-translate-x-4 opacity-50");
+          setTimeout(() => { onWeekChangeRef.current?.(-1); setMobileStartIdx(0); setSlideClass("opacity-100 translate-x-0 transition-all duration-150"); setTimeout(() => setSlideClass(""), 150); }, 50);
+        }
       }
     }
-    if (dx > 0) {
-      if (mobileStartIdx > 0) {
-        changeMobileStart(Math.max(mobileStartIdx - 3, 0));
-      } else {
-        // Animate backward before changing week
-        setSlideClass("-translate-x-4 opacity-50");
-        setTimeout(() => {
-          onWeekChange?.(-1);
-          setMobileStartIdx(0);
-          setSlideClass("opacity-100 translate-x-0 transition-all duration-150");
-          setTimeout(() => setSlideClass(""), 150);
-        }, 50);
-      }
-    }
-  }
+    function onTouchCancel() { swipeTouchRef.current = null; }
+
+    el.addEventListener('touchstart', onTouchStart, { passive: true });
+    el.addEventListener('touchmove', onTouchMove, { passive: false });
+    el.addEventListener('touchend', onTouchEnd, { passive: true });
+    el.addEventListener('touchcancel', onTouchCancel, { passive: true });
+    return () => {
+      el.removeEventListener('touchstart', onTouchStart);
+      el.removeEventListener('touchmove', onTouchMove);
+      el.removeEventListener('touchend', onTouchEnd);
+      el.removeEventListener('touchcancel', onTouchCancel);
+    };
+  }, [isMobilePortrait]);
 
   // Drag helpers
   function getSnappedMinutes(clientY: number, colEl: HTMLDivElement, offsetMinutes: number): number {
@@ -546,14 +573,11 @@ export function WeekView({ anchorDate, onModalChange, onDayClick, onWeekChange }
 
   return (
     <div
+      ref={outerRef}
       className="flex flex-col flex-1 overflow-hidden select-none"
     >
-      {/* Day header row — sticky above the scroll area; swipe handlers here to avoid pan-y interception */}
-      <div
-        className="flex flex-shrink-0 border-b border-border bg-card"
-        onTouchStart={isMobilePortrait ? handleSwipeStart : undefined}
-        onTouchEnd={isMobilePortrait ? handleSwipeEnd : undefined}
-      >
+      {/* Day header row */}
+      <div className="flex flex-shrink-0 border-b border-border bg-card">
         {/* Time column spacer — on mobile shows prev arrow */}
         <div className="w-14 flex-shrink-0 border-r border-border flex items-center justify-center">
           {isMobilePortrait && (
@@ -562,7 +586,7 @@ export function WeekView({ anchorDate, onModalChange, onDayClick, onWeekChange }
               className="w-full h-full flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
               onClick={() => {
                 if (mobileStartIdx > 0) {
-                  changeMobileStart(Math.max(mobileStartIdx - 3, 0));
+                  changeMobileStart(Math.max(mobileStartIdx - 3, 0), mobileStartIdx);
                 } else {
                   onWeekChange?.(-1);
                   setMobileStartIdx(0);
@@ -617,7 +641,7 @@ export function WeekView({ anchorDate, onModalChange, onDayClick, onWeekChange }
                   onClick={(e) => {
                     e.stopPropagation();
                     if (mobileStartIdx + 3 < 7) {
-                      changeMobileStart(mobileStartIdx + 3);
+                      changeMobileStart(mobileStartIdx + 3, mobileStartIdx);
                     } else {
                       onWeekChange?.(1);
                       setMobileStartIdx(0);
