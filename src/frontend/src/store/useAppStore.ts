@@ -233,11 +233,11 @@ export const useAppStore = create<AppState>()(
     {
       name: "stylebook-store",
       version: 2,
-      migrate: (persisted) => {
-        const s = persisted as { settings?: Partial<typeof DEFAULT_SETTINGS>; clientContacts?: unknown[] };
+      migrate: (persisted, _version) => {
+        const s = persisted as { settings?: Partial<typeof DEFAULT_SETTINGS>; clientContacts?: ClientContact[] };
         return {
-          ...s,
           settings: { ...DEFAULT_SETTINGS, ...(s.settings ?? {}), workingDays: DEFAULT_SETTINGS.workingDays },
+          clientContacts: s.clientContacts ?? [],
         };
       },
       partialize: (state) => ({
