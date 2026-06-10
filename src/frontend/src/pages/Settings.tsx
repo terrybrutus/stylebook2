@@ -284,6 +284,22 @@ export default function Settings() {
                           >
                             {day.biweekly ? "Every other week ✓" : "Every week"}
                           </button>
+                          {day.biweekly && (
+                            <div className="flex items-center gap-2 mt-0.5">
+                              <span className="text-[10px] text-muted-foreground flex-shrink-0">Reference date (a working week):</span>
+                              <input
+                                type="date"
+                                value={day.biweeklyRef ?? ""}
+                                onChange={(e) => {
+                                  const updated = { ...day, biweeklyRef: e.target.value };
+                                  const newDays = { ...(settings.workingDays ?? defaultWorkingDays()), [key]: updated };
+                                  updateSettings({ workingDays: newDays });
+                                }}
+                                className="text-[11px] border border-input rounded px-1.5 py-0.5 bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-accent/50"
+                                data-ocid={`settings.day_${key}_biweekly_ref`}
+                              />
+                            </div>
+                          )}
                         </div>
                       ) : (
                         <span className="text-xs text-muted-foreground">Off</span>
@@ -611,20 +627,21 @@ function ToggleRow({
 }
 
 function Toggle({ checked, small }: { checked: boolean; small?: boolean }) {
-  // track: w-8(32px)/h-5(20px) small or w-11(44px)/h-6(24px) regular
-  // dot: 14px or 18px; off at x=3, on at track-3-dotW = 15px or 23px
+  // Track dimensions: small = 32×20px, regular = 44×24px
+  // Dot dimensions: small = 14px, regular = 18px
+  // Dot translate: off = 3px from left; on = track - 3 - dotW (15px small, 23px regular)
   const w = small ? "w-8 h-5" : "w-11 h-6";
-  const dot = small ? "w-[14px] h-[14px]" : "w-[18px] h-[18px]";
-  const on = small ? "translate-x-[15px]" : "translate-x-[23px]";
+  const dotSize = small ? "w-[14px] h-[14px]" : "w-[18px] h-[18px]";
+  const onTranslate = small ? "translate-x-[15px]" : "translate-x-[23px]";
   return (
     <div
       className={`relative shrink-0 ${w} rounded-full transition-colors duration-200 ${
-        checked ? "bg-accent" : "bg-muted-foreground/30"
+        checked ? "bg-accent" : "bg-zinc-300 dark:bg-zinc-600"
       }`}
     >
       <span
-        className={`absolute top-[3px] ${dot} rounded-full bg-white shadow transition-transform duration-200 ${
-          checked ? on : "translate-x-[3px]"
+        className={`absolute top-[3px] ${dotSize} rounded-full bg-white shadow-sm transition-transform duration-200 ${
+          checked ? onTranslate : "translate-x-[3px]"
         }`}
       />
     </div>

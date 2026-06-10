@@ -428,14 +428,17 @@ function ClientDetail({
   onDelete: () => void;
 }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const sortedAppts = useMemo(
-    () =>
-      [...client.appointments].sort((a, b) => {
-        const d = b.date.localeCompare(a.date);
-        return d !== 0 ? d : b.startTime.localeCompare(a.startTime);
-      }),
-    [client.appointments],
-  );
+  const todayStr = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; })();
+  const { upcoming, past } = useMemo(() => {
+    const all = [...client.appointments].sort((a, b) => {
+      const d = a.date.localeCompare(b.date);
+      return d !== 0 ? d : a.startTime.localeCompare(b.startTime);
+    });
+    return {
+      upcoming: all.filter((a) => a.date >= todayStr),
+      past: all.filter((a) => a.date < todayStr).reverse(),
+    };
+  }, [client.appointments, todayStr]);
 
   const totalSpent = client.appointments.reduce((sum, a) => sum + a.price, 0);
   const initials = client.name
@@ -537,23 +540,39 @@ function ClientDetail({
         )}
       </div>
 
-      <div className="flex-1 overflow-auto px-4 py-3">
-        {sortedAppts.length > 0 ? (
-          <>
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">
-              Appointment History
-            </p>
-            <div className="flex flex-col gap-3" data-ocid="clients.detail.list">
-              {sortedAppts.map((appt, i) => (
-                <AppointmentHistoryCard key={appt.id} appt={appt} index={i + 1} />
-              ))}
-            </div>
-          </>
-        ) : (
+      <div className="flex-1 overflow-auto px-4 py-3 flex flex-col gap-4">
+        {upcoming.length === 0 && past.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-center">
             <Calendar size={28} className="text-muted-foreground/40 mb-3" />
             <p className="text-sm text-muted-foreground">No appointments yet</p>
           </div>
+        ) : (
+          <>
+            {upcoming.length > 0 && (
+              <div>
+                <p className="text-xs font-semibold text-accent uppercase tracking-wide mb-2">
+                  Upcoming ({upcoming.length})
+                </p>
+                <div className="flex flex-col gap-3" data-ocid="clients.detail.upcoming_list">
+                  {upcoming.map((appt, i) => (
+                    <AppointmentHistoryCard key={appt.id} appt={appt} index={i + 1} upcoming />
+                  ))}
+                </div>
+              </div>
+            )}
+            {past.length > 0 && (
+              <div>
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+                  History ({past.length})
+                </p>
+                <div className="flex flex-col gap-3" data-ocid="clients.detail.history_list">
+                  {past.map((appt, i) => (
+                    <AppointmentHistoryCard key={appt.id} appt={appt} index={i + 1} />
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>
@@ -562,14 +581,15 @@ function ClientDetail({
 
 // ─── Appointment History Card ─────────────────────────────────────────────────
 
-function AppointmentHistoryCard({ appt, index }: { appt: Appointment; index: number }) {
+function AppointmentHistoryCard({ appt, index, upcoming }: { appt: Appointment; index: number; upcoming?: boolean }) {
   return (
     <div
-      className="rounded-xl border border-border bg-card overflow-hidden"
+      className={`rounded-xl overflow-hidden ${upcoming ? "border-2" : "border border-border bg-card"}`}
+      style={upcoming ? { borderColor: appt.color } : undefined}
       data-ocid={`clients.detail.item.${index}`}
     >
       <div
-        className="px-3 py-2.5 flex items-center gap-2"
+        className="px-3 py-2.5 flex items-center gap-2 bg-card"
         style={{ borderLeft: `4px solid ${appt.color}` }}
       >
         <div className="flex-1 min-w-0">
