@@ -122,7 +122,7 @@ export function WeekView({ anchorDate, onModalChange, onDayClick, onWeekChange }
 
   // Refs for swipe handling — keep current values accessible inside native event listeners
   const outerRef = useRef<HTMLDivElement>(null);
-  const swipeTouchRef = useRef<{ startX: number; startY: number; isHorizontal: boolean; decided: boolean } | null>(null);
+  const swipeTouchRef = useRef<{ startX: number; startY: number; isHorizontal: boolean; decided: boolean; fired: boolean } | null>(null);
   const mobileStartIdxRef = useRef(mobileStartIdx);
   mobileStartIdxRef.current = mobileStartIdx;
   const onWeekChangeRef = useRef(onWeekChange);
@@ -273,55 +273,54 @@ export function WeekView({ anchorDate, onModalChange, onDayClick, onWeekChange }
     const el = outerRef.current;
     if (!el) return;
 
+    function changeWeek(dir: 1 | -1) {
+      setSlideStyle({ transform: `translateX(${dir * -90}px)`, opacity: 0, transition: 'transform 180ms cubic-bezier(0.4,0,1,1), opacity 150ms ease' });
+      setTimeout(() => {
+        onWeekChangeRef.current?.(dir);
+        setMobileStartIdx(0);
+        setSlideStyle({ transform: `translateX(${dir * 90}px)`, opacity: 0, transition: 'none' });
+        requestAnimationFrame(() => { requestAnimationFrame(() => { setSlideStyle({ transform: 'translateX(0)', opacity: 1, transition: 'transform 240ms cubic-bezier(0,0,0.2,1), opacity 180ms ease' }); }); });
+      }, 185);
+    }
+    function navigate(dx: number) {
+      const idx = mobileStartIdxRef.current;
+      if (dx < 0) {
+        // Swipe left → forward
+        if (idx + 3 < 7) changeMobileStart(Math.min(idx + 3, 4), idx);
+        else changeWeek(1);
+      } else {
+        // Swipe right → back
+        if (idx > 0) changeMobileStart(Math.max(idx - 3, 0), idx);
+        else changeWeek(-1);
+      }
+    }
     function onTouchStart(e: TouchEvent) {
-      swipeTouchRef.current = { startX: e.touches[0].clientX, startY: e.touches[0].clientY, isHorizontal: false, decided: false };
+      swipeTouchRef.current = { startX: e.touches[0].clientX, startY: e.touches[0].clientY, isHorizontal: false, decided: false, fired: false };
     }
     function onTouchMove(e: TouchEvent) {
       const s = swipeTouchRef.current;
       if (!s) return;
+      const dx = e.touches[0].clientX - s.startX;
+      const dy = e.touches[0].clientY - s.startY;
       if (!s.decided) {
-        const dx = Math.abs(e.touches[0].clientX - s.startX);
-        const dy = Math.abs(e.touches[0].clientY - s.startY);
-        if (dx > 6 || dy > 6) { s.decided = true; s.isHorizontal = dx > dy; }
+        if (Math.abs(dx) > 6 || Math.abs(dy) > 6) { s.decided = true; s.isHorizontal = Math.abs(dx) > Math.abs(dy); }
       }
-      // Prevent browser pan-y from claiming this gesture when it's horizontal
-      if (s.isHorizontal) e.preventDefault();
+      if (!s.isHorizontal) return;
+      // Prevent the browser (scroll, pull-to-refresh, back-swipe) from claiming the gesture
+      e.preventDefault();
+      // Navigate as soon as the threshold is crossed — don't wait for touchend,
+      // which some browsers swallow (touchcancel) for rightward/edge swipes.
+      if (!s.fired && Math.abs(dx) >= 50) {
+        s.fired = true;
+        navigate(dx);
+      }
     }
     function onTouchEnd(e: TouchEvent) {
       const s = swipeTouchRef.current;
       swipeTouchRef.current = null;
-      if (!s || !s.decided) return;
+      if (!s || s.fired || !s.decided || !s.isHorizontal) return;
       const dx = e.changedTouches[0].clientX - s.startX;
-      const dy = e.changedTouches[0].clientY - s.startY;
-      if (Math.abs(dx) < Math.abs(dy) || Math.abs(dx) < 40) return;
-      const idx = mobileStartIdxRef.current;
-      if (dx < 0) {
-        if (idx + 3 < 7) {
-          changeMobileStart(Math.min(idx + 3, 4), idx);
-        } else {
-          // Swipe left past end of week → next week
-          setSlideStyle({ transform: 'translateX(-90px)', opacity: 0, transition: 'transform 180ms cubic-bezier(0.4,0,1,1), opacity 150ms ease' });
-          setTimeout(() => {
-            onWeekChangeRef.current?.(1);
-            setMobileStartIdx(0);
-            setSlideStyle({ transform: 'translateX(90px)', opacity: 0, transition: 'none' });
-            requestAnimationFrame(() => { requestAnimationFrame(() => { setSlideStyle({ transform: 'translateX(0)', opacity: 1, transition: 'transform 240ms cubic-bezier(0,0,0.2,1), opacity 180ms ease' }); }); });
-          }, 185);
-        }
-      } else {
-        if (idx > 0) {
-          changeMobileStart(Math.max(idx - 3, 0), idx);
-        } else {
-          // Swipe right past start of week → previous week
-          setSlideStyle({ transform: 'translateX(90px)', opacity: 0, transition: 'transform 180ms cubic-bezier(0.4,0,1,1), opacity 150ms ease' });
-          setTimeout(() => {
-            onWeekChangeRef.current?.(-1);
-            setMobileStartIdx(0);
-            setSlideStyle({ transform: 'translateX(-90px)', opacity: 0, transition: 'none' });
-            requestAnimationFrame(() => { requestAnimationFrame(() => { setSlideStyle({ transform: 'translateX(0)', opacity: 1, transition: 'transform 240ms cubic-bezier(0,0,0.2,1), opacity 180ms ease' }); }); });
-          }, 185);
-        }
-      }
+      if (Math.abs(dx) >= 40) navigate(dx);
     }
     function onTouchCancel() { swipeTouchRef.current = null; }
 
