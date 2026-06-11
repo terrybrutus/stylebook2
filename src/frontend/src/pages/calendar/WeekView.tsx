@@ -118,7 +118,7 @@ export function WeekView({ anchorDate, onModalChange, onDayClick, onWeekChange }
     const todayIdx = weekDates.findIndex((d) => dateToString(d) === todayStr);
     return todayIdx >= 0 ? Math.min(Math.floor(todayIdx / 3) * 3, 4) : 0;
   });
-  const [slideClass, setSlideClass] = useState('');
+  const [slideStyle, setSlideStyle] = useState<React.CSSProperties>({});
 
   // Refs for swipe handling — keep current values accessible inside native event listeners
   const outerRef = useRef<HTMLDivElement>(null);
@@ -241,13 +241,28 @@ export function WeekView({ anchorDate, onModalChange, onDayClick, onWeekChange }
     : weekDates;
 
   function changeMobileStart(newIdx: number, currentIdx: number) {
-    const dir = newIdx > currentIdx ? 'translate-x-4' : '-translate-x-4';
-    setSlideClass(`${dir} opacity-50`);
+    const exitDir = newIdx > currentIdx ? -1 : 1;
+    // Phase 1: slide current content out
+    setSlideStyle({
+      transform: `translateX(${exitDir * 90}px)`,
+      opacity: 0,
+      transition: 'transform 180ms cubic-bezier(0.4,0,1,1), opacity 150ms ease',
+    });
     setTimeout(() => {
+      // Swap content and teleport to enter-from position (no transition)
       setMobileStartIdx(newIdx);
-      setSlideClass('opacity-100 translate-x-0 transition-all duration-150');
-      setTimeout(() => setSlideClass(''), 150);
-    }, 50);
+      setSlideStyle({ transform: `translateX(${-exitDir * 90}px)`, opacity: 0, transition: 'none' });
+      // Phase 2: slide new content in — double rAF ensures browser paints the teleport first
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          setSlideStyle({
+            transform: 'translateX(0)',
+            opacity: 1,
+            transition: 'transform 240ms cubic-bezier(0,0,0.2,1), opacity 180ms ease',
+          });
+        });
+      });
+    }, 185);
   }
 
   // Native swipe handler — must be non-passive so we can preventDefault() on horizontal
@@ -284,15 +299,27 @@ export function WeekView({ anchorDate, onModalChange, onDayClick, onWeekChange }
         if (idx + 3 < 7) {
           changeMobileStart(Math.min(idx + 3, 4), idx);
         } else {
-          setSlideClass("translate-x-4 opacity-50");
-          setTimeout(() => { onWeekChangeRef.current?.(1); setMobileStartIdx(0); setSlideClass("opacity-100 translate-x-0 transition-all duration-150"); setTimeout(() => setSlideClass(""), 150); }, 50);
+          // Swipe left past end of week → next week
+          setSlideStyle({ transform: 'translateX(-90px)', opacity: 0, transition: 'transform 180ms cubic-bezier(0.4,0,1,1), opacity 150ms ease' });
+          setTimeout(() => {
+            onWeekChangeRef.current?.(1);
+            setMobileStartIdx(0);
+            setSlideStyle({ transform: 'translateX(90px)', opacity: 0, transition: 'none' });
+            requestAnimationFrame(() => { requestAnimationFrame(() => { setSlideStyle({ transform: 'translateX(0)', opacity: 1, transition: 'transform 240ms cubic-bezier(0,0,0.2,1), opacity 180ms ease' }); }); });
+          }, 185);
         }
       } else {
         if (idx > 0) {
           changeMobileStart(Math.max(idx - 3, 0), idx);
         } else {
-          setSlideClass("-translate-x-4 opacity-50");
-          setTimeout(() => { onWeekChangeRef.current?.(-1); setMobileStartIdx(0); setSlideClass("opacity-100 translate-x-0 transition-all duration-150"); setTimeout(() => setSlideClass(""), 150); }, 50);
+          // Swipe right past start of week → previous week
+          setSlideStyle({ transform: 'translateX(90px)', opacity: 0, transition: 'transform 180ms cubic-bezier(0.4,0,1,1), opacity 150ms ease' });
+          setTimeout(() => {
+            onWeekChangeRef.current?.(-1);
+            setMobileStartIdx(0);
+            setSlideStyle({ transform: 'translateX(-90px)', opacity: 0, transition: 'none' });
+            requestAnimationFrame(() => { requestAnimationFrame(() => { setSlideStyle({ transform: 'translateX(0)', opacity: 1, transition: 'transform 240ms cubic-bezier(0,0,0.2,1), opacity 180ms ease' }); }); });
+          }, 185);
         }
       }
     }
@@ -660,10 +687,10 @@ export function WeekView({ anchorDate, onModalChange, onDayClick, onWeekChange }
       {/* Scrollable time grid — overflow-y-scroll so scrollbar always reserves space, keeping header columns aligned */}
       <div
         className="flex flex-1 overflow-y-scroll overflow-x-hidden"
-        style={{ touchAction: 'pan-y', overscrollBehavior: 'none' }}
+        style={{ touchAction: 'manipulation', overscrollBehavior: 'none' }}
         data-ocid="calendar.week_scroll"
       >
-        <div className={`flex min-w-0 w-full ${slideClass}`} style={{ height: totalPx }}>
+        <div className="flex min-w-0 w-full" style={{ height: totalPx, ...slideStyle }}>
           {/* Time labels */}
           <div
             className="w-14 flex-shrink-0 bg-background border-r border-border relative z-10"
