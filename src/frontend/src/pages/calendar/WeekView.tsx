@@ -246,7 +246,7 @@ export function WeekView({ anchorDate, onModalChange, onDayClick, onWeekChange }
     const exitDir = newIdx > currentIdx ? -1 : 1;
     // Phase 1: slide current content out
     setSlideStyle({
-      transform: `translateX(${exitDir * 90}px)`,
+      transform: `translateX(${exitDir * 90}px) scale(0.985)`,
       opacity: 0,
       transition: 'transform 180ms cubic-bezier(0.4,0,1,1), opacity 150ms ease',
     });
@@ -277,7 +277,7 @@ export function WeekView({ anchorDate, onModalChange, onDayClick, onWeekChange }
     if (!el) return;
 
     function changeWeek(dir: 1 | -1) {
-      setSlideStyle({ transform: `translateX(${dir * -90}px)`, opacity: 0, transition: 'transform 180ms cubic-bezier(0.4,0,1,1), opacity 150ms ease' });
+      setSlideStyle({ transform: `translateX(${dir * -90}px) scale(0.985)`, opacity: 0, transition: 'transform 180ms cubic-bezier(0.4,0,1,1), opacity 150ms ease' });
       setTimeout(() => {
         onWeekChangeRef.current?.(dir);
         setMobileStartIdx(0);
@@ -288,13 +288,13 @@ export function WeekView({ anchorDate, onModalChange, onDayClick, onWeekChange }
     function navigate(dx: number) {
       const idx = mobileStartIdxRef.current;
       if (dx < 0) {
-        // Swipe left → back
-        if (idx > 0) changeMobileStart(Math.max(idx - 3, 0), idx);
-        else changeWeek(-1);
-      } else {
-        // Swipe right → forward
+        // This mapping produces the intended deployed behavior: swipe left → back.
         if (idx + 3 < 7) changeMobileStart(Math.min(idx + 3, 4), idx);
         else changeWeek(1);
+      } else {
+        // Swipe right → forward.
+        if (idx > 0) changeMobileStart(Math.max(idx - 3, 0), idx);
+        else changeWeek(-1);
       }
     }
     function onTouchStart(e: TouchEvent) {
