@@ -105,6 +105,7 @@ export function WeekView({ anchorDate, onModalChange, onDayClick, onWeekChange }
 
   // Week dates respecting startWeekOnMonday setting
   const weekDates = getWeekDates(anchorDate, settings.startWeekOnMonday);
+  const weekStartStr = dateToString(weekDates[0]);
 
   const todayStr = dateToString(new Date());
   const [currentTimePx, setCurrentTimePx] = useState(() => {
@@ -230,11 +231,12 @@ export function WeekView({ anchorDate, onModalChange, onDayClick, onWeekChange }
   }, []);
 
   // When anchor week changes (e.g. Today button), reset mobile window to show today
-  // biome-ignore lint/correctness/useExhaustiveDependencies: weekDates[0] is the identity dep for the week; todayStr never changes within a session
   useEffect(() => {
-    const todayIdx = weekDates.findIndex((d) => dateToString(d) === todayStr);
-    setMobileStartIdx(todayIdx >= 0 ? Math.min(Math.floor(todayIdx / 3) * 3, 4) : 0);
-  }, [weekDates[0], todayStr]);
+    const weekStart = new Date(`${weekStartStr}T00:00:00`);
+    const today = new Date(`${todayStr}T00:00:00`);
+    const todayIdx = Math.round((today.getTime() - weekStart.getTime()) / 86_400_000);
+    setMobileStartIdx(todayIdx >= 0 && todayIdx < 7 ? Math.min(Math.floor(todayIdx / 3) * 3, 4) : 0);
+  }, [weekStartStr, todayStr]);
 
   const visibleDates = isMobilePortrait
     ? weekDates.slice(mobileStartIdx, mobileStartIdx + 3)
@@ -266,7 +268,8 @@ export function WeekView({ anchorDate, onModalChange, onDayClick, onWeekChange }
   }
 
   // Native swipe handler — must be non-passive so we can preventDefault() on horizontal
-  // gestures before the browser's pan-y handler claims them and fires touchcancel.
+  // gestures. touch-action: pan-y leaves vertical scrolling to the browser while reserving
+  // horizontal gestures for this handler.
   // biome-ignore lint/correctness/useExhaustiveDependencies: all state accessed via refs; effect only re-wires on mobile/desktop switch
   useEffect(() => {
     if (!isMobilePortrait) return;
@@ -285,13 +288,13 @@ export function WeekView({ anchorDate, onModalChange, onDayClick, onWeekChange }
     function navigate(dx: number) {
       const idx = mobileStartIdxRef.current;
       if (dx < 0) {
-        // Swipe left → forward
-        if (idx + 3 < 7) changeMobileStart(Math.min(idx + 3, 4), idx);
-        else changeWeek(1);
-      } else {
-        // Swipe right → back
+        // Swipe left → back
         if (idx > 0) changeMobileStart(Math.max(idx - 3, 0), idx);
         else changeWeek(-1);
+      } else {
+        // Swipe right → forward
+        if (idx + 3 < 7) changeMobileStart(Math.min(idx + 3, 4), idx);
+        else changeWeek(1);
       }
     }
     function onTouchStart(e: TouchEvent) {
@@ -601,6 +604,10 @@ export function WeekView({ anchorDate, onModalChange, onDayClick, onWeekChange }
     <div
       ref={outerRef}
       className="flex flex-col flex-1 overflow-hidden select-none"
+      style={{
+        touchAction: isMobilePortrait ? 'pan-y' : undefined,
+        overscrollBehaviorX: 'none',
+      }}
     >
       {/* Day header row */}
       <div className="flex flex-shrink-0 border-b border-border bg-card">
@@ -686,7 +693,7 @@ export function WeekView({ anchorDate, onModalChange, onDayClick, onWeekChange }
       {/* Scrollable time grid — overflow-y-scroll so scrollbar always reserves space, keeping header columns aligned */}
       <div
         className="flex flex-1 overflow-y-scroll overflow-x-hidden"
-        style={{ touchAction: 'manipulation', overscrollBehavior: 'none' }}
+        style={{ touchAction: 'pan-y', overscrollBehavior: 'none' }}
         data-ocid="calendar.week_scroll"
       >
         <div className="flex min-w-0 w-full" style={{ height: totalPx, ...slideStyle }}>
