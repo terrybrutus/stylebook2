@@ -82,6 +82,7 @@ export interface WorkingDaySchedule {
 export interface Settings {
   startWeekOnMonday: boolean;
   darkMode: boolean;
+  mobileWeekLayout?: "three-day" | "full-week";
   workingHoursStart: string; // HH:MM
   workingHoursEnd: string; // HH:MM
   workingDays?: {

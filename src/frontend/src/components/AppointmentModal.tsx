@@ -96,6 +96,8 @@ export default function AppointmentModal({
   const addAppointment = useAppStore((s) => s.addAppointment);
   const storeUpdate = useAppStore((s) => s.updateAppointment);
   const deleteAppointment = useAppStore((s) => s.deleteAppointment);
+  const addClientContact = useAppStore((s) => s.addClientContact);
+  const updateClientContact = useAppStore((s) => s.updateClientContact);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [form, setForm] = useState<FormState>(
     defaultForm(appointment, prefillDate, prefillTime, services),
@@ -103,7 +105,7 @@ export default function AppointmentModal({
   const [clientSuggestions, setClientSuggestions] = useState<string[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [clientHistory, setClientHistory] = useState<
-    Record<string, { serviceId: string; serviceName: string; lastDate: string }>
+    Record<string, { serviceId: string; serviceName: string; lastDate: string; phone?: string; notes?: string }>
   >({});
   const [showServiceBanner, setShowServiceBanner] = useState(false);
   const [pendingServiceId, setPendingServiceId] = useState<string | null>(null);
@@ -190,19 +192,33 @@ export default function AppointmentModal({
       const merged = [...new Set([...names, ...contactNames])].sort();
       setAllClientNames(merged);
       // Build client history map from current appointments ref
-      const hist: Record<string, { serviceId: string; serviceName: string; lastDate: string }> = {};
+      const hist: Record<string, { serviceId: string; serviceName: string; lastDate: string; phone?: string; notes?: string }> = {};
+      for (const c of clientContacts) {
+        hist[c.name] = {
+          serviceId: "",
+          serviceName: "",
+          lastDate: "",
+          phone: c.phone,
+          notes: c.notes,
+        };
+      }
       const sorted = [...appointmentsRef.current].sort(
         (a, b) =>
           b.date.localeCompare(a.date) ||
           b.startTime.localeCompare(a.startTime),
       );
       for (const a of sorted) {
-        if (!hist[a.clientName]) {
+        if (!hist[a.clientName]?.lastDate) {
           hist[a.clientName] = {
             serviceId: a.serviceId,
             serviceName: a.serviceName,
             lastDate: a.date,
+            phone: hist[a.clientName]?.phone ?? a.phoneNumber,
+            notes: hist[a.clientName]?.notes ?? a.notes,
           };
+        } else {
+          hist[a.clientName].phone = hist[a.clientName].phone ?? a.phoneNumber;
+          hist[a.clientName].notes = hist[a.clientName].notes ?? a.notes;
         }
       }
       setClientHistory(hist);
@@ -272,11 +288,16 @@ export default function AppointmentModal({
     const hist = clientHistory[name];
     setForm((f) => {
       const svc = hist ? services.find((s) => s.id === hist.serviceId) : null;
+      const base = {
+        ...f,
+        clientName: name,
+        phone: hist?.phone ?? f.phone,
+        notes: hist?.notes ?? f.notes,
+      };
       if (svc) {
         const ph = buildPhasesFromService(svc, f.startTime);
         return {
-          ...f,
-          clientName: name,
+          ...base,
           serviceId: svc.id,
           durationHours: Math.floor(svc.totalDurationMinutes / 60),
           durationMinutes: svc.totalDurationMinutes % 60,
@@ -284,7 +305,7 @@ export default function AppointmentModal({
           phases: ph,
         };
       }
-      return { ...f, clientName: name };
+      return base;
     });
     setShowSuggestions(false);
   }
@@ -489,6 +510,19 @@ export default function AppointmentModal({
         phases: form.phases,
         color: svc?.color ?? "#ACE6C0",
       };
+      const clientContact = {
+        name: input.clientName,
+        phone: input.phoneNumber,
+        notes: input.notes,
+      };
+      if (clientContacts.some((c) => c.name === clientContact.name)) {
+        updateClientContact(clientContact.name, {
+          phone: clientContact.phone,
+          notes: clientContact.notes,
+        });
+      } else {
+        addClientContact(clientContact);
+      }
 
       if (mode === "create") {
         // Create the first (or only) appointment
@@ -707,46 +741,60 @@ export default function AppointmentModal({
             />
             {showSuggestions && (
               <div className="absolute top-full left-0 right-0 z-10 mt-1 bg-popover border border-border rounded-lg shadow-lg overflow-hidden">
-                {clientSuggestions.map((name) => (
-                  <button
-                    type="button"
-                    key={name}
-                    className="w-full px-3 py-2.5 text-left text-sm hover:bg-muted transition-colors flex items-center justify-between"
-                    onMouseDown={(e) => {
-                      e.preventDefault();
-                      selectClientSuggestion(name);
-                    }}
-                  >
-                    <span>{name}</span>
-                    {clientHistory[name] && (
-                      <span className="text-xs text-muted-foreground text-right">
-                        <span className="block">{clientHistory[name].serviceName}</span>
-                        <span className="block opacity-70">{formatDate(clientHistory[name].lastDate, { month: "short", day: "numeric" })}</span>
+                {clientSuggestions.map((name) => {
+                  const hist = clientHistory[name];
+                  return (
+                    <button
+                      type="button"
+                      key={name}
+                      className="w-full px-3 py-2.5 text-left text-sm hover:bg-muted transition-colors flex items-center justify-between gap-3"
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        selectClientSuggestion(name);
+                      }}
+                    >
+                      <span className="min-w-0">
+                        <span className="block font-medium truncate">{name}</span>
+                        {hist?.phone && (
+                          <span className="block text-xs text-muted-foreground truncate">
+                            {hist.phone}
+                          </span>
+                        )}
                       </span>
-                    )}
-                  </button>
-                ))}
+                      {hist?.serviceName && (
+                        <span className="text-xs text-muted-foreground text-right shrink-0">
+                          <span className="block">{hist.serviceName}</span>
+                          <span className="block opacity-70">{formatDate(hist.lastDate, { month: "short", day: "numeric" })}</span>
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
               </div>
             )}
           </div>
 
-          {/* Client contact info — read-only */}
-          {(() => {
-            const contact = form.clientName.trim()
-              ? clientContacts.find((c) => c.name === form.clientName.trim())
-              : null;
-            if (!contact?.phone && !contact?.notes) return null;
-            return (
-              <div className="rounded-md bg-muted/40 px-3 py-2 -mt-2 space-y-1">
-                {contact.phone && (
-                  <p className="text-xs text-muted-foreground">Phone: {contact.phone}</p>
-                )}
-                {contact.notes && (
-                  <p className="text-xs text-muted-foreground">Notes: {contact.notes}</p>
-                )}
-              </div>
-            );
-          })()}
+          {/* Client contact info */}
+          <div>
+            <Label
+              htmlFor="appt-phone"
+              className="text-sm font-medium mb-1.5 block"
+            >
+              Phone Number
+            </Label>
+            <Input
+              id="appt-phone"
+              type="tel"
+              inputMode="tel"
+              value={form.phone}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, phone: e.target.value }))
+              }
+              placeholder="Client phone number"
+              className="text-base"
+              data-ocid="appointment.phone_input"
+            />
+          </div>
 
           {/* Service */}
           <div>
@@ -1027,13 +1075,13 @@ export default function AppointmentModal({
             </div>
           )}
 
-          {/* Appointment Notes */}
+          {/* Client Notes */}
           <div>
             <Label
               htmlFor="appt-notes"
               className="text-sm font-medium mb-1.5 block"
             >
-              Appointment Notes <span className="text-xs font-normal text-muted-foreground">(this visit only)</span>
+              Client Notes <span className="text-xs font-normal text-muted-foreground">(shared with client profile)</span>
             </Label>
             <Textarea
               id="appt-notes"
@@ -1041,7 +1089,7 @@ export default function AppointmentModal({
               onChange={(e) =>
                 setForm((f) => ({ ...f, notes: e.target.value }))
               }
-              placeholder="Any notes about this appointment…"
+              placeholder="Client notes…"
               rows={3}
               className="text-base resize-none"
               data-ocid="appointment.notes_textarea"

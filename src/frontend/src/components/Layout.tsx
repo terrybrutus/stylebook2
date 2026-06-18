@@ -196,15 +196,7 @@ export function Layout({ children }: LayoutProps) {
           {/* Branding footer */}
           <div className="mt-auto px-4 pb-2">
             <p className="text-[10px] text-muted-foreground text-center leading-4">
-              &copy; {new Date().getFullYear()} &bull;{" "}
-              <a
-                href={`https://caffeine.ai?utm_source=caffeine-footer&utm_medium=referral&utm_content=${encodeURIComponent(window.location.hostname)}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="hover:text-accent transition-colors"
-              >
-                caffeine.ai
-              </a>
+              Built by Terry Brutus
             </p>
           </div>
         </aside>

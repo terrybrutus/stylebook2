@@ -70,6 +70,7 @@ interface AppState {
 const DEFAULT_SETTINGS: Settings = {
   startWeekOnMonday: true,
   darkMode: false,
+  mobileWeekLayout: "three-day",
   workingHoursStart: "07:00",
   workingHoursEnd: "19:00",
   workingDays: {

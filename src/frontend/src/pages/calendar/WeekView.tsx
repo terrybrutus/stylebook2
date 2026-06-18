@@ -53,6 +53,8 @@ interface ContextMenu {
   appointment: Appointment;
 }
 
+type ResizeEdge = "top" | "bottom";
+
 function getPhaseStartMinutes(phase: { startTime: string }): number {
   const timePart = phase.startTime.includes("T")
     ? phase.startTime.split("T")[1].slice(0, 5)
@@ -86,11 +88,12 @@ function getBlockLabel(
 }
 
 export function WeekView({ anchorDate, onModalChange, onDayClick, onWeekChange }: Props) {
-  const { settings, allAppointments, deleteAppointment } = useAppStore(
+  const { settings, allAppointments, deleteAppointment, updateSettings } = useAppStore(
     useShallow((s) => ({
       settings: s.settings,
       allAppointments: s.appointments,
       deleteAppointment: s.deleteAppointment,
+      updateSettings: s.updateSettings,
     })),
   );
 
@@ -124,6 +127,8 @@ export function WeekView({ anchorDate, onModalChange, onDayClick, onWeekChange }
   // Refs for swipe handling — keep current values accessible inside native event listeners
   const outerRef = useRef<HTMLDivElement>(null);
   const swipeTouchRef = useRef<{ startX: number; startY: number; isHorizontal: boolean; decided: boolean; fired: boolean } | null>(null);
+  const suppressTapUntilRef = useRef(0);
+  const isFullWeekMobileRef = useRef(false);
   const mobileStartIdxRef = useRef(mobileStartIdx);
   mobileStartIdxRef.current = mobileStartIdx;
   const onWeekChangeRef = useRef(onWeekChange);
@@ -158,6 +163,12 @@ export function WeekView({ anchorDate, onModalChange, onDayClick, onWeekChange }
     pointerId: number;
     pointerTarget: Element;
   } | null>(null);
+  const activeResizeRef = useRef<{
+    block: RenderBlock;
+    edge: ResizeEdge;
+    pointerId: number;
+    pointerTarget: Element;
+  } | null>(null);
 
   const [dragGhost, setDragGhost] = useState<{
     topPx: number;
@@ -165,6 +176,12 @@ export function WeekView({ anchorDate, onModalChange, onDayClick, onWeekChange }
     time: string;
     dateStr: string;
     color: string;
+    label: string;
+  } | null>(null);
+  const [resizeGhost, setResizeGhost] = useState<{
+    topPx: number;
+    heightPx: number;
+    dateStr: string;
     label: string;
   } | null>(null);
 
@@ -196,6 +213,7 @@ export function WeekView({ anchorDate, onModalChange, onDayClick, onWeekChange }
 
   const handleSlotClick = useCallback(
     (dateStr: string, slot: string) => {
+      if (Date.now() < suppressTapUntilRef.current) return;
       onModalChange({
         isOpen: true,
         mode: "create",
@@ -218,6 +236,8 @@ export function WeekView({ anchorDate, onModalChange, onDayClick, onWeekChange }
   // Determine visible columns based on viewport
   // Mobile portrait: 3 visible, desktop: all 7
   const [isMobilePortrait, setIsMobilePortrait] = useState(false);
+  const isFullWeekMobile = isMobilePortrait && settings.mobileWeekLayout === "full-week";
+  isFullWeekMobileRef.current = isFullWeekMobile;
 
   useEffect(() => {
     function check() {
@@ -238,7 +258,7 @@ export function WeekView({ anchorDate, onModalChange, onDayClick, onWeekChange }
     setMobileStartIdx(todayIdx >= 0 && todayIdx < 7 ? Math.min(Math.floor(todayIdx / 3) * 3, 4) : 0);
   }, [weekStartStr, todayStr]);
 
-  const visibleDates = isMobilePortrait
+  const visibleDates = isMobilePortrait && !isFullWeekMobile
     ? weekDates.slice(mobileStartIdx, mobileStartIdx + 3)
     : weekDates;
 
@@ -289,10 +309,18 @@ export function WeekView({ anchorDate, onModalChange, onDayClick, onWeekChange }
       const idx = mobileStartIdxRef.current;
       if (dx < 0) {
         // This mapping produces the intended deployed behavior: swipe left → back.
+        if (isFullWeekMobileRef.current) {
+          changeWeek(1);
+          return;
+        }
         if (idx + 3 < 7) changeMobileStart(Math.min(idx + 3, 4), idx);
         else changeWeek(1);
       } else {
         // Swipe right → forward.
+        if (isFullWeekMobileRef.current) {
+          changeWeek(-1);
+          return;
+        }
         if (idx > 0) changeMobileStart(Math.max(idx - 3, 0), idx);
         else changeWeek(-1);
       }
@@ -315,6 +343,7 @@ export function WeekView({ anchorDate, onModalChange, onDayClick, onWeekChange }
       // which some browsers swallow (touchcancel) for rightward/edge swipes.
       if (!s.fired && Math.abs(dx) >= 50) {
         s.fired = true;
+        suppressTapUntilRef.current = Date.now() + 500;
         navigate(dx);
       }
     }
@@ -323,7 +352,10 @@ export function WeekView({ anchorDate, onModalChange, onDayClick, onWeekChange }
       swipeTouchRef.current = null;
       if (!s || s.fired || !s.decided || !s.isHorizontal) return;
       const dx = e.changedTouches[0].clientX - s.startX;
-      if (Math.abs(dx) >= 40) navigate(dx);
+      if (Math.abs(dx) >= 40) {
+        suppressTapUntilRef.current = Date.now() + 500;
+        navigate(dx);
+      }
     }
     function onTouchCancel() { swipeTouchRef.current = null; }
 
@@ -352,6 +384,107 @@ export function WeekView({ anchorDate, onModalChange, onDayClick, onWeekChange }
     const h = Math.floor(totalMin / 60);
     const m = totalMin % 60;
     return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '00')}`;
+  }
+
+  function timeStrToMinutes(time: string): number {
+    const [h, m] = time.split(":").map(Number);
+    return h * 60 + m;
+  }
+
+  async function persistAppointmentUpdate(updated: Appointment, previous: Appointment) {
+    updateAppointmentInStore(updated);
+    try {
+      await api.updateAppointment(updated.id, {
+        clientName: updated.clientName,
+        serviceId: updated.serviceId,
+        serviceName: updated.serviceName,
+        date: updated.date,
+        startTime: updated.startTime,
+        durationMinutes: updated.durationMinutes,
+        price: updated.price,
+        phoneNumber: updated.phoneNumber,
+        notes: updated.notes,
+        phases: updated.phases,
+        color: updated.color,
+      });
+    } catch (err) {
+      console.error("Appointment save failed, reverting", err);
+      updateAppointmentInStore(previous);
+    }
+  }
+
+  function getResizeDraft(block: RenderBlock, edge: ResizeEdge, clientY: number, dateStr: string) {
+    const col = colRefs.current.get(dateStr);
+    if (!col) return null;
+    const start = timeStrToMinutes(block.appt.startTime);
+    const end = start + block.appt.durationMinutes;
+    const snapped = getSnappedMinutes(clientY, col, 0);
+    let nextStart = start;
+    let nextEnd = end;
+    if (edge === "top") {
+      nextStart = Math.min(snapped, end - 15);
+    } else {
+      nextEnd = Math.max(snapped, start + 15);
+    }
+    nextStart = Math.max(startMinutes, nextStart);
+    nextEnd = Math.min(endMinutes, nextEnd);
+    const durationMinutes = Math.max(15, nextEnd - nextStart);
+    return {
+      startTime: minutesToTimeStr(nextStart),
+      durationMinutes,
+      topPx: minutesToPx(nextStart, startMinutes),
+      heightPx: Math.max(durationMinutes * MIN_PX, 20),
+    };
+  }
+
+  function handleResizePointerDown(e: React.PointerEvent, block: RenderBlock, edge: ResizeEdge) {
+    if (e.pointerType !== "mouse" || block.isProcessing || block.appt.phases.length > 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const target = e.currentTarget as Element;
+    target.setPointerCapture(e.pointerId);
+    activeResizeRef.current = { block, edge, pointerId: e.pointerId, pointerTarget: target };
+  }
+
+  function handleResizePointerMove(e: React.PointerEvent, dateStr: string) {
+    const resize = activeResizeRef.current;
+    if (!resize) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const draft = getResizeDraft(resize.block, resize.edge, e.clientY, dateStr);
+    if (!draft) return;
+    setResizeGhost({
+      topPx: draft.topPx,
+      heightPx: draft.heightPx,
+      dateStr,
+      label: `${draft.startTime} · ${formatDuration(draft.durationMinutes)}`,
+    });
+  }
+
+  function handleResizePointerUp(e: React.PointerEvent, dateStr: string) {
+    const resize = activeResizeRef.current;
+    if (!resize) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const draft = getResizeDraft(resize.block, resize.edge, e.clientY, dateStr);
+    const previous = resize.block.appt;
+    activeResizeRef.current = null;
+    setResizeGhost(null);
+    if (!draft || (draft.startTime === previous.startTime && draft.durationMinutes === previous.durationMinutes)) return;
+    void persistAppointmentUpdate(
+      {
+        ...previous,
+        startTime: draft.startTime,
+        durationMinutes: draft.durationMinutes,
+        updatedAt: new Date().toISOString(),
+      },
+      previous,
+    );
+  }
+
+  function handleResizePointerCancel() {
+    activeResizeRef.current = null;
+    setResizeGhost(null);
   }
 
   function getDateAtClientX(clientX: number): string | null {
@@ -503,26 +636,8 @@ export function WeekView({ anchorDate, onModalChange, onDayClick, onWeekChange }
     const { appt, newTime, newDate } = dropConfirm;
     const newPhases = appt.phases.length > 0 ? recalcPhaseStarts(appt.phases, newTime) : appt.phases;
     const updated: Appointment = { ...appt, date: newDate, startTime: newTime, phases: newPhases, updatedAt: new Date().toISOString() };
-    updateAppointmentInStore(updated);
     setDropConfirm(null);
-    try {
-      await api.updateAppointment(appt.id, {
-        clientName: updated.clientName,
-        serviceId: updated.serviceId,
-        serviceName: updated.serviceName,
-        date: newDate,
-        startTime: newTime,
-        durationMinutes: updated.durationMinutes,
-        price: updated.price,
-        phoneNumber: updated.phoneNumber,
-        notes: updated.notes,
-        phases: newPhases,
-        color: updated.color,
-      });
-    } catch (err) {
-      console.error("Drop save failed, reverting", err);
-      updateAppointmentInStore(appt);
-    }
+    await persistAppointmentUpdate(updated, appt);
   }
 
   function buildBlocks(dateStr: string): RenderBlock[] {
@@ -609,11 +724,42 @@ export function WeekView({ anchorDate, onModalChange, onDayClick, onWeekChange }
         overscrollBehaviorX: 'none',
       }}
     >
+      {isMobilePortrait && (
+        <div className="flex items-center justify-end gap-1 px-3 py-2 border-b border-border bg-card">
+          <span className="mr-auto text-[11px] font-medium text-muted-foreground">
+            Mobile week layout
+          </span>
+          <button
+            type="button"
+            className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-colors ${
+              !isFullWeekMobile
+                ? "bg-accent text-accent-foreground"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+            onClick={() => updateSettings({ mobileWeekLayout: "three-day" })}
+            data-ocid="week.layout_three_day"
+          >
+            3 Days
+          </button>
+          <button
+            type="button"
+            className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-colors ${
+              isFullWeekMobile
+                ? "bg-accent text-accent-foreground"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+            onClick={() => updateSettings({ mobileWeekLayout: "full-week" })}
+            data-ocid="week.layout_full_week"
+          >
+            Full Week
+          </button>
+        </div>
+      )}
       {/* Day header row */}
       <div className="flex flex-shrink-0 border-b border-border bg-card">
         {/* Time column spacer — on mobile shows prev arrow */}
         <div className="w-14 flex-shrink-0 border-r border-border flex items-center justify-center">
-          {isMobilePortrait && (
+          {isMobilePortrait && !isFullWeekMobile && (
             <button
               type="button"
               className="w-full h-full flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
@@ -642,18 +788,18 @@ export function WeekView({ anchorDate, onModalChange, onDayClick, onWeekChange }
             <button
               key={dateStr}
               type="button"
-              className="flex-1 flex flex-col items-center justify-center py-1.5 border-r border-border cursor-pointer hover:bg-muted/30 transition-colors relative"
+              className="flex-1 flex flex-col items-center justify-center py-1.5 border-r border-border cursor-pointer hover:bg-muted/30 transition-colors relative min-w-0"
               onClick={() => onDayClick?.(dateStr)}
               data-ocid={`week.day_header.${dayNum}`}
             >
               <span
-                className="text-[10px] uppercase tracking-wider font-medium"
+                className={`${isFullWeekMobile ? "text-[9px]" : "text-[10px]"} uppercase tracking-wider font-medium`}
                 style={{ color: isToday ? "#00ADB5" : undefined }}
               >
                 {dayLabel}
               </span>
               <span
-                className="text-sm font-bold leading-none mt-0.5 w-7 h-7 flex items-center justify-center rounded-full"
+                className={`${isFullWeekMobile ? "text-xs w-6 h-6" : "text-sm w-7 h-7"} font-bold leading-none mt-0.5 flex items-center justify-center rounded-full`}
                 style={{
                   background: isToday ? "#00ADB5" : "transparent",
                   color: isToday ? "#fff" : undefined,
@@ -661,13 +807,13 @@ export function WeekView({ anchorDate, onModalChange, onDayClick, onWeekChange }
               >
                 {dayNum}
               </span>
-              {apptCount > 0 && (
+              {apptCount > 0 && !isFullWeekMobile && (
                 <span className="text-[9px] font-medium text-muted-foreground leading-none px-1 py-0.5 rounded bg-muted/60 mt-0.5">
                   {apptCount} {apptCount === 1 ? "appt" : "appts"}
                 </span>
               )}
               {/* Next arrow on last visible day — mobile only */}
-              {isMobilePortrait && isLast && (
+              {isMobilePortrait && !isFullWeekMobile && isLast && (
                 <button
                   type="button"
                   className="absolute right-0 top-0 bottom-0 flex items-center pr-0.5"
@@ -818,6 +964,7 @@ export function WeekView({ anchorDate, onModalChange, onDayClick, onWeekChange }
                   <WeekBlock
                     key={`${block.appt.id}-${block.phaseIndex}-${idx}`}
                     block={block}
+                    compact={isFullWeekMobile}
                     leftPct={block.leftPct}
                     zIdx={block.zIdx}
                     isDragging={dragGhost !== null && activeDragRef.current?.block.appt.id === block.appt.id && activeDragRef.current?.block.phaseIndex === block.phaseIndex}
@@ -825,6 +972,10 @@ export function WeekView({ anchorDate, onModalChange, onDayClick, onWeekChange }
                     onBlockPointerMove={handleBlockPointerMove}
                     onBlockPointerUp={(e) => handleBlockPointerUp(e, block, dateStr)}
                     onBlockPointerCancel={handleBlockPointerCancel}
+                    onResizePointerDown={(e, edge) => handleResizePointerDown(e, block, edge)}
+                    onResizePointerMove={(e) => handleResizePointerMove(e, dateStr)}
+                    onResizePointerUp={(e) => handleResizePointerUp(e, dateStr)}
+                    onResizePointerCancel={handleResizePointerCancel}
                     onContextMenu={handleContextMenu}
                   />
                 ))}
@@ -844,6 +995,24 @@ export function WeekView({ anchorDate, onModalChange, onDayClick, onWeekChange }
                   >
                     <div className="px-1 py-0.5">
                       <span className="text-[9px] font-bold">{formatTime12(dragGhost.time)}</span>
+                    </div>
+                  </div>
+                )}
+
+                {resizeGhost && resizeGhost.dateStr === dateStr && (
+                  <div
+                    className="absolute right-0.5 rounded border-2 border-dashed pointer-events-none"
+                    style={{
+                      top: resizeGhost.topPx + 1,
+                      height: Math.max(resizeGhost.heightPx - 2, 4),
+                      left: "2px",
+                      zIndex: 55,
+                      borderColor: "oklch(var(--accent))",
+                      backgroundColor: "oklch(var(--accent) / 0.12)",
+                    }}
+                  >
+                    <div className="px-1 py-0.5">
+                      <span className="text-[9px] font-bold">{resizeGhost.label}</span>
                     </div>
                   </div>
                 )}
@@ -959,6 +1128,7 @@ type WeekBlockProps = {
     label: string;
     color: string;
   };
+  compact: boolean;
   leftPct: string;
   zIdx: number;
   isDragging: boolean;
@@ -966,11 +1136,16 @@ type WeekBlockProps = {
   onBlockPointerMove: (e: React.PointerEvent) => void;
   onBlockPointerUp: (e: React.PointerEvent) => void;
   onBlockPointerCancel: () => void;
+  onResizePointerDown: (e: React.PointerEvent, edge: ResizeEdge) => void;
+  onResizePointerMove: (e: React.PointerEvent) => void;
+  onResizePointerUp: (e: React.PointerEvent) => void;
+  onResizePointerCancel: () => void;
   onContextMenu: (e: React.MouseEvent, appt: Appointment) => void;
 };
 
 function WeekBlock({
   block,
+  compact,
   leftPct,
   zIdx,
   isDragging,
@@ -978,10 +1153,14 @@ function WeekBlock({
   onBlockPointerMove,
   onBlockPointerUp,
   onBlockPointerCancel,
+  onResizePointerDown,
+  onResizePointerMove,
+  onResizePointerUp,
+  onResizePointerCancel,
   onContextMenu,
 }: WeekBlockProps) {
   const { appt, topPx, heightPx, isProcessing, label, color } = block;
-  const isShort = heightPx < 50;
+  const isShort = compact || heightPx < 50;
 
   const zIndex = zIdx;
 
@@ -998,7 +1177,7 @@ function WeekBlock({
   return (
     <button
       type="button"
-      className="absolute right-0.5 rounded border overflow-hidden cursor-pointer select-none text-left"
+      className="absolute right-0.5 rounded border overflow-hidden cursor-pointer select-none text-left group"
       style={{
         top: topPx + 1,
         height: Math.max(heightPx - 2, 4),
@@ -1015,11 +1194,31 @@ function WeekBlock({
       onContextMenu={(e) => onContextMenu(e, appt)}
       data-ocid="appointment.card"
     >
+      {!isProcessing && appt.phases.length === 0 && (
+        <>
+          <span
+            className="absolute left-0 right-0 top-0 h-2 cursor-ns-resize opacity-0 group-hover:opacity-100 bg-foreground/20 z-10"
+            onPointerDown={(e) => onResizePointerDown(e, "top")}
+            onPointerMove={onResizePointerMove}
+            onPointerUp={onResizePointerUp}
+            onPointerCancel={onResizePointerCancel}
+            data-ocid="appointment.resize_top"
+          />
+          <span
+            className="absolute left-0 right-0 bottom-0 h-2 cursor-ns-resize opacity-0 group-hover:opacity-100 bg-foreground/20 z-10"
+            onPointerDown={(e) => onResizePointerDown(e, "bottom")}
+            onPointerMove={onResizePointerMove}
+            onPointerUp={onResizePointerUp}
+            onPointerCancel={onResizePointerCancel}
+            data-ocid="appointment.resize_bottom"
+          />
+        </>
+      )}
       <div className="px-1 py-0.5 h-full overflow-hidden flex flex-col">
         {isProcessing ? (
           // Processing phase: show client name so context is clear
           <span
-            className="text-[9px] text-foreground/70 italic leading-tight"
+            className={`${compact ? "text-[8px]" : "text-[9px]"} text-foreground/70 italic leading-tight`}
             style={{ wordBreak: "break-word", overflowWrap: "break-word" }}
           >
             {label}
@@ -1027,7 +1226,7 @@ function WeekBlock({
         ) : isShort ? (
           // Short block (<50px): client name only, no truncation
           <span
-            className="text-[10px] font-bold leading-tight text-foreground"
+            className={`${compact ? "text-[8px]" : "text-[10px]"} font-bold leading-tight text-foreground`}
             style={{ wordBreak: "break-word", overflowWrap: "break-word" }}
           >
             {appt.clientName}
@@ -1036,7 +1235,7 @@ function WeekBlock({
           // Full block: client name, service name, duration · price
           <>
             <span
-              className="text-[10px] font-bold leading-tight text-foreground"
+              className={`${compact ? "text-[8px]" : "text-[10px]"} font-bold leading-tight text-foreground`}
               style={{ wordBreak: "break-word", overflowWrap: "break-word" }}
             >
               {appt.clientName}

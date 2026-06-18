@@ -157,6 +157,7 @@ export default function Clients() {
   const updateClientContact = useAppStore((s) => s.updateClientContact);
   const deleteClientContact = useAppStore((s) => s.deleteClientContact);
   const deleteAppointments = useAppStore((s) => s.deleteAppointments);
+  const updateAppointment = useAppStore((s) => s.updateAppointment);
   const renameClient = useAppStore((s) => s.renameClient);
 
   const [search, setSearch] = useState("");
@@ -228,16 +229,50 @@ export default function Clients() {
         existingNames={existingNames}
         onSave={(contact, oldName) => {
           const prevName = oldName ?? screen.contact.name;
+          const apptsToSync = useAppStore.getState().appointments.filter((a) => a.clientName === prevName);
           if (contact.name !== prevName) {
             // Rename: update all appointments and the contact record
             renameClient(prevName, contact.name);
-            // Persist renamed appointments to ICP asynchronously
-            const appts = useAppStore.getState().appointments.filter((a) => a.clientName === contact.name);
-            for (const a of appts) {
-              api.updateAppointment(a.id, { clientName: contact.name }).catch(console.error);
+            if (clientContacts.some((c) => c.name === contact.name)) {
+              updateClientContact(contact.name, { phone: contact.phone, notes: contact.notes });
+            } else {
+              addClientContact(contact);
+            }
+            // Persist renamed/contact-synced appointments to ICP asynchronously
+            for (const a of apptsToSync) {
+              const updated = {
+                ...a,
+                clientName: contact.name,
+                phoneNumber: contact.phone,
+                notes: contact.notes,
+                updatedAt: new Date().toISOString(),
+              };
+              updateAppointment(updated);
+              api.updateAppointment(a.id, {
+                clientName: contact.name,
+                phoneNumber: contact.phone,
+                notes: contact.notes,
+              }).catch(console.error);
             }
           } else {
-            updateClientContact(prevName, { phone: contact.phone, notes: contact.notes });
+            if (clientContacts.some((c) => c.name === prevName)) {
+              updateClientContact(prevName, { phone: contact.phone, notes: contact.notes });
+            } else {
+              addClientContact(contact);
+            }
+            for (const a of apptsToSync) {
+              const updated = {
+                ...a,
+                phoneNumber: contact.phone,
+                notes: contact.notes,
+                updatedAt: new Date().toISOString(),
+              };
+              updateAppointment(updated);
+              api.updateAppointment(a.id, {
+                phoneNumber: contact.phone,
+                notes: contact.notes,
+              }).catch(console.error);
+            }
           }
           setScreen({ type: "list" });
         }}

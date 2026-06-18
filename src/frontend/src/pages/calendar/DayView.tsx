@@ -88,6 +88,8 @@ type RenderBlock = {
   zIdx: number;
 };
 
+type ResizeEdge = "top" | "bottom";
+
 export function DayView({ date, onModalChange }: Props) {
   const { settings, allAppointments, deleteAppointment, updateAppointment } = useAppStore(
     useShallow((s) => ({
@@ -129,7 +131,14 @@ export function DayView({ date, onModalChange }: Props) {
     pointerTarget: Element;
   } | null>(null);
   const [dragGhost, setDragGhost] = useState<{ topPx: number; time: string } | null>(null);
+  const [resizeGhost, setResizeGhost] = useState<{ topPx: number; heightPx: number; label: string } | null>(null);
   const [dropConfirm, setDropConfirm] = useState<{ appt: Appointment; newTime: string; outsideHours?: string } | null>(null);
+  const activeResizeRef = useRef<{
+    block: RenderBlock;
+    edge: ResizeEdge;
+    pointerId: number;
+    pointerTarget: Element;
+  } | null>(null);
 
   // Update current time every 30s — safe: isToday and startHour are primitives
   useEffect(() => {
@@ -186,6 +195,103 @@ export function DayView({ date, onModalChange }: Props) {
     const h = Math.floor(totalMin / 60);
     const m = totalMin % 60;
     return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '00')}`;
+  }
+
+  function timeStrToMinutes(time: string): number {
+    const [h, m] = time.split(":").map(Number);
+    return h * 60 + m;
+  }
+
+  async function persistAppointmentUpdate(updated: Appointment, previous: Appointment) {
+    updateAppointment(updated);
+    try {
+      await api.updateAppointment(updated.id, {
+        clientName: updated.clientName,
+        serviceId: updated.serviceId,
+        serviceName: updated.serviceName,
+        date: updated.date,
+        startTime: updated.startTime,
+        durationMinutes: updated.durationMinutes,
+        price: updated.price,
+        phoneNumber: updated.phoneNumber,
+        notes: updated.notes,
+        phases: updated.phases,
+        color: updated.color,
+      });
+    } catch (err) {
+      console.error("Appointment save failed, reverting", err);
+      updateAppointment(previous);
+    }
+  }
+
+  function getResizeDraft(block: RenderBlock, edge: ResizeEdge, clientY: number) {
+    const start = timeStrToMinutes(block.appt.startTime);
+    const end = start + block.appt.durationMinutes;
+    const snapped = getSnappedMinutes(clientY, 0);
+    let nextStart = start;
+    let nextEnd = end;
+    if (edge === "top") {
+      nextStart = Math.min(snapped, end - 15);
+    } else {
+      nextEnd = Math.max(snapped, start + 15);
+    }
+    nextStart = Math.max(startHour * 60, nextStart);
+    nextEnd = Math.min(endHour * 60, nextEnd);
+    const durationMinutes = Math.max(15, nextEnd - nextStart);
+    return {
+      startTime: minutesToTimeStr(nextStart),
+      durationMinutes,
+      topPx: ((nextStart - startHour * 60) / 60) * HOUR_PX,
+      heightPx: Math.max((durationMinutes / 60) * HOUR_PX, 20),
+    };
+  }
+
+  function handleResizePointerDown(e: React.PointerEvent, block: RenderBlock, edge: ResizeEdge) {
+    if (e.pointerType !== "mouse" || block.isProcessing || block.appt.phases.length > 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const target = e.currentTarget as Element;
+    target.setPointerCapture(e.pointerId);
+    activeResizeRef.current = { block, edge, pointerId: e.pointerId, pointerTarget: target };
+  }
+
+  function handleResizePointerMove(e: React.PointerEvent) {
+    const resize = activeResizeRef.current;
+    if (!resize) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const draft = getResizeDraft(resize.block, resize.edge, e.clientY);
+    setResizeGhost({
+      topPx: draft.topPx,
+      heightPx: draft.heightPx,
+      label: `${draft.startTime} · ${formatDuration(draft.durationMinutes)}`,
+    });
+  }
+
+  function handleResizePointerUp(e: React.PointerEvent) {
+    const resize = activeResizeRef.current;
+    if (!resize) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const draft = getResizeDraft(resize.block, resize.edge, e.clientY);
+    const previous = resize.block.appt;
+    activeResizeRef.current = null;
+    setResizeGhost(null);
+    if (draft.startTime === previous.startTime && draft.durationMinutes === previous.durationMinutes) return;
+    void persistAppointmentUpdate(
+      {
+        ...previous,
+        startTime: draft.startTime,
+        durationMinutes: draft.durationMinutes,
+        updatedAt: new Date().toISOString(),
+      },
+      previous,
+    );
+  }
+
+  function handleResizePointerCancel() {
+    activeResizeRef.current = null;
+    setResizeGhost(null);
   }
 
   function handleBlockPointerDown(e: React.PointerEvent, block: RenderBlock) {
@@ -314,26 +420,8 @@ export function DayView({ date, onModalChange }: Props) {
     const { appt, newTime } = dropConfirm;
     const newPhases = appt.phases.length > 0 ? recalcPhaseStarts(appt.phases, newTime) : appt.phases;
     const updated: Appointment = { ...appt, startTime: newTime, phases: newPhases, updatedAt: new Date().toISOString() };
-    updateAppointment(updated);
     setDropConfirm(null);
-    try {
-      await api.updateAppointment(appt.id, {
-        clientName: updated.clientName,
-        serviceId: updated.serviceId,
-        serviceName: updated.serviceName,
-        date: updated.date,
-        startTime: newTime,
-        durationMinutes: updated.durationMinutes,
-        price: updated.price,
-        phoneNumber: updated.phoneNumber,
-        notes: updated.notes,
-        phases: newPhases,
-        color: updated.color,
-      });
-    } catch (err) {
-      console.error("Drop save failed, reverting", err);
-      updateAppointment(appt);
-    }
+    await persistAppointmentUpdate(updated, appt);
   }
 
   const rawBlocks: Omit<RenderBlock, 'leftPct' | 'zIdx'>[] = [];
@@ -515,6 +603,10 @@ export function DayView({ date, onModalChange }: Props) {
             onBlockPointerMove={handleBlockPointerMove}
             onBlockPointerUp={handleBlockPointerUp}
             onBlockPointerCancel={handleBlockPointerCancel}
+            onResizePointerDown={handleResizePointerDown}
+            onResizePointerMove={handleResizePointerMove}
+            onResizePointerUp={handleResizePointerUp}
+            onResizePointerCancel={handleResizePointerCancel}
             onContextMenu={handleApptContextMenu}
           />
         ))}
@@ -534,6 +626,24 @@ export function DayView({ date, onModalChange }: Props) {
           >
             <div className="px-1.5 py-0.5">
               <span className="text-[10px] font-bold">{formatTime12(dragGhost.time)}</span>
+            </div>
+          </div>
+        )}
+
+        {resizeGhost && (
+          <div
+            className="absolute right-1 rounded-md border-2 border-dashed pointer-events-none"
+            style={{
+              top: resizeGhost.topPx + 1,
+              height: Math.max(resizeGhost.heightPx - 2, 4),
+              left: "4px",
+              zIndex: 55,
+              borderColor: "oklch(var(--accent))",
+              backgroundColor: "oklch(var(--accent) / 0.12)",
+            }}
+          >
+            <div className="px-1.5 py-0.5">
+              <span className="text-[10px] font-bold">{resizeGhost.label}</span>
             </div>
           </div>
         )}
@@ -644,6 +754,10 @@ type BlockProps = {
   onBlockPointerMove: (e: React.PointerEvent) => void;
   onBlockPointerUp: (e: React.PointerEvent, block: RenderBlock) => void;
   onBlockPointerCancel: () => void;
+  onResizePointerDown: (e: React.PointerEvent, block: RenderBlock, edge: ResizeEdge) => void;
+  onResizePointerMove: (e: React.PointerEvent) => void;
+  onResizePointerUp: (e: React.PointerEvent) => void;
+  onResizePointerCancel: () => void;
   onContextMenu: (e: React.MouseEvent, appt: Appointment) => void;
 };
 
@@ -656,6 +770,10 @@ function AppointmentBlock({
   onBlockPointerMove,
   onBlockPointerUp,
   onBlockPointerCancel,
+  onResizePointerDown,
+  onResizePointerMove,
+  onResizePointerUp,
+  onResizePointerCancel,
   onContextMenu,
 }: BlockProps) {
   const { appt, topPx, heightPx, isProcessing, label, color } = block;
@@ -673,7 +791,7 @@ function AppointmentBlock({
 
   return (
     <div
-      className="absolute right-1 rounded-md border overflow-hidden cursor-pointer select-none"
+      className="absolute right-1 rounded-md border overflow-hidden cursor-pointer select-none group"
       style={{
         top: topPx + 1,
         height: heightPx - 2,
@@ -690,6 +808,26 @@ function AppointmentBlock({
       onContextMenu={(e) => onContextMenu(e, appt)}
       data-ocid="appointment.card"
     >
+      {!isProcessing && appt.phases.length === 0 && (
+        <>
+          <div
+            className="absolute left-0 right-0 top-0 h-2 cursor-ns-resize opacity-0 group-hover:opacity-100 bg-foreground/20 z-10"
+            onPointerDown={(e) => onResizePointerDown(e, block, "top")}
+            onPointerMove={onResizePointerMove}
+            onPointerUp={onResizePointerUp}
+            onPointerCancel={onResizePointerCancel}
+            data-ocid="appointment.resize_top"
+          />
+          <div
+            className="absolute left-0 right-0 bottom-0 h-2 cursor-ns-resize opacity-0 group-hover:opacity-100 bg-foreground/20 z-10"
+            onPointerDown={(e) => onResizePointerDown(e, block, "bottom")}
+            onPointerMove={onResizePointerMove}
+            onPointerUp={onResizePointerUp}
+            onPointerCancel={onResizePointerCancel}
+            data-ocid="appointment.resize_bottom"
+          />
+        </>
+      )}
       <div className="px-1.5 py-0.5 h-full flex flex-col justify-start overflow-hidden">
         {isProcessing ? (
           <span className="text-[10px] text-foreground/60 italic">{label}</span>

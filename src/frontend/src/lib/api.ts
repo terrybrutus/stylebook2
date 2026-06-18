@@ -459,6 +459,7 @@ export async function deleteService(id: string): Promise<void> {
 const DEFAULT_SETTINGS: Settings = {
   startWeekOnMonday: true,
   darkMode: false,
+  mobileWeekLayout: "three-day",
   workingHoursStart: "08:00",
   workingHoursEnd: "19:00",
 };
@@ -474,6 +475,10 @@ export async function getSettings(): Promise<Settings> {
     return {
       startWeekOnMonday: snap.startWeekOnMonday,
       darkMode: localDarkMode,
+      mobileWeekLayout: loadJSON<Settings>(
+        KEYS.settings,
+        DEFAULT_SETTINGS,
+      ).mobileWeekLayout ?? "three-day",
       workingHoursStart: snap.workingHoursStart,
       workingHoursEnd: snap.workingHoursEnd,
     };

@@ -547,15 +547,7 @@ export default function Settings() {
           {/* Footer */}
           <div className="pt-2 pb-6 text-center">
             <p className="text-xs text-muted-foreground">
-              &copy; {new Date().getFullYear()}. Built with love using{" "}
-              <a
-                href={`https://caffeine.ai?utm_source=caffeine-footer&utm_medium=referral&utm_content=${encodeURIComponent(window.location.hostname)}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-accent hover:underline"
-              >
-                caffeine.ai
-              </a>
+              Built by Terry Brutus
             </p>
           </div>
         </div>
