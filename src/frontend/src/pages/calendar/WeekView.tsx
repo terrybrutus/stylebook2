@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useShallow } from "zustand/shallow";
+import * as api from "../../lib/api";
 import {
   dateToString,
   formatDuration,
@@ -12,29 +13,30 @@ import {
   hexToRgba,
   hueRotate,
 } from "../../lib/utils";
-import * as api from "../../lib/api";
 import { useAppStore } from "../../store/useAppStore";
-import type { Appointment, AppointmentModalState, PhaseInstance } from "../../types";
+import type {
+  Appointment,
+  AppointmentModalState,
+  PhaseInstance,
+} from "../../types";
 
 const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 // 2.5px per minute = 150px per hour
 const MIN_PX = 2.5;
-function timeStrToMinutes(time: string): number {
-  const [h, m] = time.split(":").map(Number);
-  return h * 60 + m;
-}
-
 function minutesToPx(minutes: number, startMinutes: number): number {
   return (minutes - startMinutes) * MIN_PX;
 }
 
-function recalcPhaseStarts(phases: PhaseInstance[], baseStart: string): PhaseInstance[] {
-  const [sh, sm] = baseStart.split(':').map(Number);
+function recalcPhaseStarts(
+  phases: PhaseInstance[],
+  baseStart: string,
+): PhaseInstance[] {
+  const [sh, sm] = baseStart.split(":").map(Number);
   let cursor = sh * 60 + sm;
   return phases.map((p) => {
-    const hh = String(Math.floor(cursor / 60)).padStart(2, '0');
-    const mm = String(cursor % 60).padStart(2, '00');
+    const hh = String(Math.floor(cursor / 60)).padStart(2, "0");
+    const mm = String(cursor % 60).padStart(2, "00");
     cursor += p.durationMinutes;
     return { ...p, startTime: `${hh}:${mm}` };
   });
@@ -87,15 +89,21 @@ function getBlockLabel(
   return { label: `${appt.clientName} — ${phase.name}`, isProcessing: false };
 }
 
-export function WeekView({ anchorDate, onModalChange, onDayClick, onWeekChange }: Props) {
-  const { settings, allAppointments, deleteAppointment, updateSettings } = useAppStore(
-    useShallow((s) => ({
-      settings: s.settings,
-      allAppointments: s.appointments,
-      deleteAppointment: s.deleteAppointment,
-      updateSettings: s.updateSettings,
-    })),
-  );
+export function WeekView({
+  anchorDate,
+  onModalChange,
+  onDayClick,
+  onWeekChange,
+}: Props) {
+  const { settings, allAppointments, deleteAppointment, updateSettings } =
+    useAppStore(
+      useShallow((s) => ({
+        settings: s.settings,
+        allAppointments: s.appointments,
+        deleteAppointment: s.deleteAppointment,
+        updateSettings: s.updateSettings,
+      })),
+    );
 
   const updateAppointmentInStore = useAppStore((s) => s.updateAppointment);
 
@@ -126,7 +134,13 @@ export function WeekView({ anchorDate, onModalChange, onDayClick, onWeekChange }
 
   // Refs for swipe handling — keep current values accessible inside native event listeners
   const outerRef = useRef<HTMLDivElement>(null);
-  const swipeTouchRef = useRef<{ startX: number; startY: number; isHorizontal: boolean; decided: boolean; fired: boolean } | null>(null);
+  const swipeTouchRef = useRef<{
+    startX: number;
+    startY: number;
+    isHorizontal: boolean;
+    decided: boolean;
+    fired: boolean;
+  } | null>(null);
   const suppressTapUntilRef = useRef(0);
   const isFullWeekMobileRef = useRef(false);
   const mobileStartIdxRef = useRef(mobileStartIdx);
@@ -236,7 +250,8 @@ export function WeekView({ anchorDate, onModalChange, onDayClick, onWeekChange }
   // Determine visible columns based on viewport
   // Mobile portrait: 3 visible, desktop: all 7
   const [isMobilePortrait, setIsMobilePortrait] = useState(false);
-  const isFullWeekMobile = isMobilePortrait && settings.mobileWeekLayout === "full-week";
+  const isFullWeekMobile =
+    isMobilePortrait && settings.mobileWeekLayout === "full-week";
   isFullWeekMobileRef.current = isFullWeekMobile;
 
   useEffect(() => {
@@ -254,13 +269,20 @@ export function WeekView({ anchorDate, onModalChange, onDayClick, onWeekChange }
   useEffect(() => {
     const weekStart = new Date(`${weekStartStr}T00:00:00`);
     const today = new Date(`${todayStr}T00:00:00`);
-    const todayIdx = Math.round((today.getTime() - weekStart.getTime()) / 86_400_000);
-    setMobileStartIdx(todayIdx >= 0 && todayIdx < 7 ? Math.min(Math.floor(todayIdx / 3) * 3, 4) : 0);
+    const todayIdx = Math.round(
+      (today.getTime() - weekStart.getTime()) / 86_400_000,
+    );
+    setMobileStartIdx(
+      todayIdx >= 0 && todayIdx < 7
+        ? Math.min(Math.floor(todayIdx / 3) * 3, 4)
+        : 0,
+    );
   }, [weekStartStr, todayStr]);
 
-  const visibleDates = isMobilePortrait && !isFullWeekMobile
-    ? weekDates.slice(mobileStartIdx, mobileStartIdx + 3)
-    : weekDates;
+  const visibleDates =
+    isMobilePortrait && !isFullWeekMobile
+      ? weekDates.slice(mobileStartIdx, mobileStartIdx + 3)
+      : weekDates;
 
   function changeMobileStart(newIdx: number, currentIdx: number) {
     const exitDir = newIdx > currentIdx ? -1 : 1;
@@ -268,19 +290,24 @@ export function WeekView({ anchorDate, onModalChange, onDayClick, onWeekChange }
     setSlideStyle({
       transform: `translateX(${exitDir * 90}px) scale(0.985)`,
       opacity: 0,
-      transition: 'transform 180ms cubic-bezier(0.4,0,1,1), opacity 150ms ease',
+      transition: "transform 180ms cubic-bezier(0.4,0,1,1), opacity 150ms ease",
     });
     setTimeout(() => {
       // Swap content and teleport to enter-from position (no transition)
       setMobileStartIdx(newIdx);
-      setSlideStyle({ transform: `translateX(${-exitDir * 90}px)`, opacity: 0, transition: 'none' });
+      setSlideStyle({
+        transform: `translateX(${-exitDir * 90}px)`,
+        opacity: 0,
+        transition: "none",
+      });
       // Phase 2: slide new content in — double rAF ensures browser paints the teleport first
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
           setSlideStyle({
-            transform: 'translateX(0)',
+            transform: "translateX(0)",
             opacity: 1,
-            transition: 'transform 240ms cubic-bezier(0,0,0.2,1), opacity 180ms ease',
+            transition:
+              "transform 240ms cubic-bezier(0,0,0.2,1), opacity 180ms ease",
           });
         });
       });
@@ -297,12 +324,30 @@ export function WeekView({ anchorDate, onModalChange, onDayClick, onWeekChange }
     if (!el) return;
 
     function changeWeek(dir: 1 | -1) {
-      setSlideStyle({ transform: `translateX(${dir * -90}px) scale(0.985)`, opacity: 0, transition: 'transform 180ms cubic-bezier(0.4,0,1,1), opacity 150ms ease' });
+      setSlideStyle({
+        transform: `translateX(${dir * -90}px) scale(0.985)`,
+        opacity: 0,
+        transition:
+          "transform 180ms cubic-bezier(0.4,0,1,1), opacity 150ms ease",
+      });
       setTimeout(() => {
         onWeekChangeRef.current?.(dir);
         setMobileStartIdx(0);
-        setSlideStyle({ transform: `translateX(${dir * 90}px)`, opacity: 0, transition: 'none' });
-        requestAnimationFrame(() => { requestAnimationFrame(() => { setSlideStyle({ transform: 'translateX(0)', opacity: 1, transition: 'transform 240ms cubic-bezier(0,0,0.2,1), opacity 180ms ease' }); }); });
+        setSlideStyle({
+          transform: `translateX(${dir * 90}px)`,
+          opacity: 0,
+          transition: "none",
+        });
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            setSlideStyle({
+              transform: "translateX(0)",
+              opacity: 1,
+              transition:
+                "transform 240ms cubic-bezier(0,0,0.2,1), opacity 180ms ease",
+            });
+          });
+        });
       }, 185);
     }
     function navigate(dx: number) {
@@ -326,7 +371,13 @@ export function WeekView({ anchorDate, onModalChange, onDayClick, onWeekChange }
       }
     }
     function onTouchStart(e: TouchEvent) {
-      swipeTouchRef.current = { startX: e.touches[0].clientX, startY: e.touches[0].clientY, isHorizontal: false, decided: false, fired: false };
+      swipeTouchRef.current = {
+        startX: e.touches[0].clientX,
+        startY: e.touches[0].clientY,
+        isHorizontal: false,
+        decided: false,
+        fired: false,
+      };
     }
     function onTouchMove(e: TouchEvent) {
       const s = swipeTouchRef.current;
@@ -334,7 +385,10 @@ export function WeekView({ anchorDate, onModalChange, onDayClick, onWeekChange }
       const dx = e.touches[0].clientX - s.startX;
       const dy = e.touches[0].clientY - s.startY;
       if (!s.decided) {
-        if (Math.abs(dx) > 6 || Math.abs(dy) > 6) { s.decided = true; s.isHorizontal = Math.abs(dx) > Math.abs(dy); }
+        if (Math.abs(dx) > 6 || Math.abs(dy) > 6) {
+          s.decided = true;
+          s.isHorizontal = Math.abs(dx) > Math.abs(dy);
+        }
       }
       if (!s.isHorizontal) return;
       // Prevent the browser (scroll, pull-to-refresh, back-swipe) from claiming the gesture
@@ -357,24 +411,31 @@ export function WeekView({ anchorDate, onModalChange, onDayClick, onWeekChange }
         navigate(dx);
       }
     }
-    function onTouchCancel() { swipeTouchRef.current = null; }
+    function onTouchCancel() {
+      swipeTouchRef.current = null;
+    }
 
-    el.addEventListener('touchstart', onTouchStart, { passive: true });
-    el.addEventListener('touchmove', onTouchMove, { passive: false });
-    el.addEventListener('touchend', onTouchEnd, { passive: true });
-    el.addEventListener('touchcancel', onTouchCancel, { passive: true });
+    el.addEventListener("touchstart", onTouchStart, { passive: true });
+    el.addEventListener("touchmove", onTouchMove, { passive: false });
+    el.addEventListener("touchend", onTouchEnd, { passive: true });
+    el.addEventListener("touchcancel", onTouchCancel, { passive: true });
     return () => {
-      el.removeEventListener('touchstart', onTouchStart);
-      el.removeEventListener('touchmove', onTouchMove);
-      el.removeEventListener('touchend', onTouchEnd);
-      el.removeEventListener('touchcancel', onTouchCancel);
+      el.removeEventListener("touchstart", onTouchStart);
+      el.removeEventListener("touchmove", onTouchMove);
+      el.removeEventListener("touchend", onTouchEnd);
+      el.removeEventListener("touchcancel", onTouchCancel);
     };
   }, [isMobilePortrait]);
 
   // Drag helpers
-  function getSnappedMinutes(clientY: number, colEl: HTMLDivElement, offsetMinutes: number): number {
+  function getSnappedMinutes(
+    clientY: number,
+    colEl: HTMLDivElement,
+    offsetMinutes: number,
+  ): number {
     const rect = colEl.getBoundingClientRect();
-    const relY = clientY - rect.top - (offsetMinutes / MIN_PX / 60) * MIN_PX * 60;
+    const relY =
+      clientY - rect.top - (offsetMinutes / MIN_PX / 60) * MIN_PX * 60;
     const rawMin = startMinutes + relY / MIN_PX;
     const snapped = Math.round(rawMin / 15) * 15;
     return Math.max(startMinutes, Math.min(endMinutes - 15, snapped));
@@ -383,7 +444,7 @@ export function WeekView({ anchorDate, onModalChange, onDayClick, onWeekChange }
   function minutesToTimeStr(totalMin: number): string {
     const h = Math.floor(totalMin / 60);
     const m = totalMin % 60;
-    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '00')}`;
+    return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "00")}`;
   }
 
   function timeStrToMinutes(time: string): number {
@@ -391,7 +452,10 @@ export function WeekView({ anchorDate, onModalChange, onDayClick, onWeekChange }
     return h * 60 + m;
   }
 
-  async function persistAppointmentUpdate(updated: Appointment, previous: Appointment) {
+  async function persistAppointmentUpdate(
+    updated: Appointment,
+    previous: Appointment,
+  ) {
     updateAppointmentInStore(updated);
     try {
       await api.updateAppointment(updated.id, {
@@ -413,7 +477,12 @@ export function WeekView({ anchorDate, onModalChange, onDayClick, onWeekChange }
     }
   }
 
-  function getResizeDraft(block: RenderBlock, edge: ResizeEdge, clientY: number, dateStr: string) {
+  function getResizeDraft(
+    block: RenderBlock,
+    edge: ResizeEdge,
+    clientY: number,
+    dateStr: string,
+  ) {
     const col = colRefs.current.get(dateStr);
     if (!col) return null;
     const start = timeStrToMinutes(block.appt.startTime);
@@ -437,13 +506,27 @@ export function WeekView({ anchorDate, onModalChange, onDayClick, onWeekChange }
     };
   }
 
-  function handleResizePointerDown(e: React.PointerEvent, block: RenderBlock, edge: ResizeEdge) {
-    if (e.pointerType !== "mouse" || block.isProcessing || block.appt.phases.length > 0) return;
+  function handleResizePointerDown(
+    e: React.PointerEvent,
+    block: RenderBlock,
+    edge: ResizeEdge,
+  ) {
+    if (
+      e.pointerType !== "mouse" ||
+      block.isProcessing ||
+      block.appt.phases.length > 0
+    )
+      return;
     e.preventDefault();
     e.stopPropagation();
     const target = e.currentTarget as Element;
     target.setPointerCapture(e.pointerId);
-    activeResizeRef.current = { block, edge, pointerId: e.pointerId, pointerTarget: target };
+    activeResizeRef.current = {
+      block,
+      edge,
+      pointerId: e.pointerId,
+      pointerTarget: target,
+    };
   }
 
   function handleResizePointerMove(e: React.PointerEvent, dateStr: string) {
@@ -470,7 +553,12 @@ export function WeekView({ anchorDate, onModalChange, onDayClick, onWeekChange }
     const previous = resize.block.appt;
     activeResizeRef.current = null;
     setResizeGhost(null);
-    if (!draft || (draft.startTime === previous.startTime && draft.durationMinutes === previous.durationMinutes)) return;
+    if (
+      !draft ||
+      (draft.startTime === previous.startTime &&
+        draft.durationMinutes === previous.durationMinutes)
+    )
+      return;
     void persistAppointmentUpdate(
       {
         ...previous,
@@ -495,7 +583,11 @@ export function WeekView({ anchorDate, onModalChange, onDayClick, onWeekChange }
     return null;
   }
 
-  function handleBlockPointerDown(e: React.PointerEvent, block: RenderBlock, dateStr: string) {
+  function handleBlockPointerDown(
+    e: React.PointerEvent,
+    block: RenderBlock,
+    dateStr: string,
+  ) {
     if (block.isProcessing) return;
     if (e.button !== 0) return;
     e.stopPropagation();
@@ -517,7 +609,18 @@ export function WeekView({ anchorDate, onModalChange, onDayClick, onWeekChange }
         setContextMenu({ x: e.clientX, y: e.clientY, appointment: block.appt });
       }
     }, 300);
-    activeDragRef.current = { block, offsetMinutes, started: false, startClientY: e.clientY, startClientX: e.clientX, longPressTimer, isTouch, dragArmed: !isTouch, pointerId: e.pointerId, pointerTarget: target };
+    activeDragRef.current = {
+      block,
+      offsetMinutes,
+      started: false,
+      startClientY: e.clientY,
+      startClientX: e.clientX,
+      longPressTimer,
+      isTouch,
+      dragArmed: !isTouch,
+      pointerId: e.pointerId,
+      pointerTarget: target,
+    };
   }
 
   function handleBlockPointerMove(e: React.PointerEvent) {
@@ -538,7 +641,10 @@ export function WeekView({ anchorDate, onModalChange, onDayClick, onWeekChange }
     if (!drag.started) {
       if (dy < 6 && dx < 6) return;
       drag.started = true;
-      if (drag.longPressTimer) { clearTimeout(drag.longPressTimer); drag.longPressTimer = null; }
+      if (drag.longPressTimer) {
+        clearTimeout(drag.longPressTimer);
+        drag.longPressTimer = null;
+      }
     }
     const targetDate = getDateAtClientX(e.clientX);
     const colEl = targetDate ? colRefs.current.get(targetDate) : null;
@@ -555,13 +661,17 @@ export function WeekView({ anchorDate, onModalChange, onDayClick, onWeekChange }
     });
   }
 
-  function handleBlockPointerUp(e: React.PointerEvent, block: RenderBlock, origDateStr: string) {
+  function handleBlockPointerUp(
+    e: React.PointerEvent,
+    block: RenderBlock,
+    origDateStr: string,
+  ) {
     const drag = activeDragRef.current;
     if (drag?.longPressTimer) clearTimeout(drag.longPressTimer);
     activeDragRef.current = null;
     setDragGhost(null);
     if (!drag?.started) {
-      onModalChange({ isOpen: true, mode: 'edit', appointment: block.appt });
+      onModalChange({ isOpen: true, mode: "edit", appointment: block.appt });
       return;
     }
     const targetDate = getDateAtClientX(e.clientX) ?? origDateStr;
@@ -570,17 +680,26 @@ export function WeekView({ anchorDate, onModalChange, onDayClick, onWeekChange }
     const totalMin = getSnappedMinutes(e.clientY, colEl, drag.offsetMinutes);
     const newTime = minutesToTimeStr(totalMin);
     if (newTime !== block.appt.startTime || targetDate !== block.appt.date) {
-      const toMin = (t: string) => { const [h, m] = t.split(":").map(Number); return h * 60 + m; };
+      const toMin = (t: string) => {
+        const [h, m] = t.split(":").map(Number);
+        return h * 60 + m;
+      };
       // Check active-vs-active overlap — prevent drop if it conflicts
       const newStartMin = toMin(newTime);
       const newActiveBlocks: { start: number; end: number }[] = [];
       if (block.appt.phases.length === 0) {
-        newActiveBlocks.push({ start: newStartMin, end: newStartMin + block.appt.durationMinutes });
+        newActiveBlocks.push({
+          start: newStartMin,
+          end: newStartMin + block.appt.durationMinutes,
+        });
       } else {
         let cursor = newStartMin;
         for (const p of block.appt.phases) {
           if (p.phaseType === "active") {
-            newActiveBlocks.push({ start: cursor, end: cursor + p.durationMinutes });
+            newActiveBlocks.push({
+              start: cursor,
+              end: cursor + p.durationMinutes,
+            });
           }
           cursor += p.durationMinutes;
         }
@@ -592,19 +711,30 @@ export function WeekView({ anchorDate, onModalChange, onDayClick, onWeekChange }
         const existingActiveBlocks: { start: number; end: number }[] = [];
         if (existing.phases.length === 0) {
           const s = toMin(existing.startTime);
-          existingActiveBlocks.push({ start: s, end: s + existing.durationMinutes });
+          existingActiveBlocks.push({
+            start: s,
+            end: s + existing.durationMinutes,
+          });
         } else {
           for (const p of existing.phases) {
             if (p.phaseType === "active") {
-              const tp = p.startTime.includes("T") ? p.startTime.split("T")[1].slice(0, 5) : p.startTime;
+              const tp = p.startTime.includes("T")
+                ? p.startTime.split("T")[1].slice(0, 5)
+                : p.startTime;
               const s = toMin(tp);
-              existingActiveBlocks.push({ start: s, end: s + p.durationMinutes });
+              existingActiveBlocks.push({
+                start: s,
+                end: s + p.durationMinutes,
+              });
             }
           }
         }
         for (const na of newActiveBlocks) {
           for (const ea of existingActiveBlocks) {
-            if (na.start < ea.end && na.end > ea.start) { hasConflict = true; break; }
+            if (na.start < ea.end && na.end > ea.start) {
+              hasConflict = true;
+              break;
+            }
           }
           if (hasConflict) break;
         }
@@ -617,16 +747,25 @@ export function WeekView({ anchorDate, onModalChange, onDayClick, onWeekChange }
         outsideHours = "That day is not in your working schedule.";
       } else {
         const apptEnd = toMin(newTime) + block.appt.durationMinutes;
-        if (toMin(newTime) < toMin(schedule.start) || apptEnd > toMin(schedule.end)) {
+        if (
+          toMin(newTime) < toMin(schedule.start) ||
+          apptEnd > toMin(schedule.end)
+        ) {
           outsideHours = `Outside working hours (${formatTime12(schedule.start)}–${formatTime12(schedule.end)}).`;
         }
       }
-      setDropConfirm({ appt: block.appt, newTime, newDate: targetDate, outsideHours });
+      setDropConfirm({
+        appt: block.appt,
+        newTime,
+        newDate: targetDate,
+        outsideHours,
+      });
     }
   }
 
   function handleBlockPointerCancel() {
-    if (activeDragRef.current?.longPressTimer) clearTimeout(activeDragRef.current.longPressTimer);
+    if (activeDragRef.current?.longPressTimer)
+      clearTimeout(activeDragRef.current.longPressTimer);
     activeDragRef.current = null;
     setDragGhost(null);
   }
@@ -634,15 +773,24 @@ export function WeekView({ anchorDate, onModalChange, onDayClick, onWeekChange }
   async function confirmDrop() {
     if (!dropConfirm) return;
     const { appt, newTime, newDate } = dropConfirm;
-    const newPhases = appt.phases.length > 0 ? recalcPhaseStarts(appt.phases, newTime) : appt.phases;
-    const updated: Appointment = { ...appt, date: newDate, startTime: newTime, phases: newPhases, updatedAt: new Date().toISOString() };
+    const newPhases =
+      appt.phases.length > 0
+        ? recalcPhaseStarts(appt.phases, newTime)
+        : appt.phases;
+    const updated: Appointment = {
+      ...appt,
+      date: newDate,
+      startTime: newTime,
+      phases: newPhases,
+      updatedAt: new Date().toISOString(),
+    };
     setDropConfirm(null);
     await persistAppointmentUpdate(updated, appt);
   }
 
   function buildBlocks(dateStr: string): RenderBlock[] {
     const dayAppts = allAppointments.filter((a) => a.date === dateStr);
-    const raw: Omit<RenderBlock, 'leftPct' | 'rightPct' | 'zIdx'>[] = [];
+    const raw: Omit<RenderBlock, "leftPct" | "rightPct" | "zIdx">[] = [];
     for (const appt of dayAppts) {
       if (appt.phases.length === 0) {
         const apptStartMin = timeStrToMinutes(appt.startTime);
@@ -686,7 +834,7 @@ export function WeekView({ anchorDate, onModalChange, onDayClick, onWeekChange }
         overlapOrder[j] = Math.max(overlapOrder[j], overlapOrder[i] + 1);
       }
     }
-    const offsets = ['0%', '20%', '40%'];
+    const offsets = ["0%", "20%", "40%"];
     // Assign visually distinct colors based on overlap order, rotating hue from
     // the block's base (service) color. 120° steps give maximum separation.
     const HUE_OFFSETS = [0, 120, 240, 60, 180, 300];
@@ -709,7 +857,7 @@ export function WeekView({ anchorDate, onModalChange, onDayClick, onWeekChange }
         ...b,
         color: displayColors[i],
         leftPct: offsets[apptOrder],
-        rightPct: '0%',
+        rightPct: "0%",
         zIdx: (b.isProcessing ? 5 : 10) + apptOrder,
       };
     });
@@ -720,8 +868,8 @@ export function WeekView({ anchorDate, onModalChange, onDayClick, onWeekChange }
       ref={outerRef}
       className="flex flex-col flex-1 overflow-hidden select-none"
       style={{
-        touchAction: isMobilePortrait ? 'pan-y' : undefined,
-        overscrollBehaviorX: 'none',
+        touchAction: isMobilePortrait ? "pan-y" : undefined,
+        overscrollBehaviorX: "none",
       }}
     >
       {isMobilePortrait && (
@@ -765,7 +913,10 @@ export function WeekView({ anchorDate, onModalChange, onDayClick, onWeekChange }
               className="w-full h-full flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
               onClick={() => {
                 if (mobileStartIdx > 0) {
-                  changeMobileStart(Math.max(mobileStartIdx - 3, 0), mobileStartIdx);
+                  changeMobileStart(
+                    Math.max(mobileStartIdx - 3, 0),
+                    mobileStartIdx,
+                  );
                 } else {
                   onWeekChange?.(-1);
                   setMobileStartIdx(0);
@@ -783,7 +934,9 @@ export function WeekView({ anchorDate, onModalChange, onDayClick, onWeekChange }
           const dayLabel = DAY_LABELS[date.getDay()];
           const dayNum = date.getDate();
           const isLast = i === visibleDates.length - 1;
-          const apptCount = allAppointments.filter((a) => a.date === dateStr).length;
+          const apptCount = allAppointments.filter(
+            (a) => a.date === dateStr,
+          ).length;
           return (
             <button
               key={dateStr}
@@ -828,7 +981,9 @@ export function WeekView({ anchorDate, onModalChange, onDayClick, onWeekChange }
                   }}
                   aria-label="Next days"
                 >
-                  <span className="text-base leading-none text-muted-foreground">›</span>
+                  <span className="text-base leading-none text-muted-foreground">
+                    ›
+                  </span>
                 </button>
               )}
             </button>
@@ -839,10 +994,13 @@ export function WeekView({ anchorDate, onModalChange, onDayClick, onWeekChange }
       {/* Scrollable time grid — overflow-y-scroll so scrollbar always reserves space, keeping header columns aligned */}
       <div
         className="flex flex-1 overflow-y-scroll overflow-x-hidden"
-        style={{ touchAction: 'pan-y', overscrollBehavior: 'none' }}
+        style={{ touchAction: "pan-y", overscrollBehavior: "none" }}
         data-ocid="calendar.week_scroll"
       >
-        <div className="flex min-w-0 w-full" style={{ height: totalPx, ...slideStyle }}>
+        <div
+          className="flex min-w-0 w-full"
+          style={{ height: totalPx, ...slideStyle }}
+        >
           {/* Time labels */}
           <div
             className="w-14 flex-shrink-0 bg-background border-r border-border relative z-10"
@@ -891,14 +1049,25 @@ export function WeekView({ anchorDate, onModalChange, onDayClick, onWeekChange }
                 className="flex-1 relative border-r border-border bg-background"
                 style={{ height: totalPx, minWidth: 0 }}
                 data-ocid={`week.day_column.${dateStr}`}
-                ref={(el) => { if (el) colRefs.current.set(dateStr, el); else colRefs.current.delete(dateStr); }}
+                ref={(el) => {
+                  if (el) colRefs.current.set(dateStr, el);
+                  else colRefs.current.delete(dateStr);
+                }}
               >
                 {/* Non-working hours overlay */}
                 {(() => {
                   const sched = getWorkingScheduleForDate(dateStr, settings);
-                  const toMin = (t: string) => { const [h, m] = t.split(":").map(Number); return h * 60 + m; };
+                  const toMin = (t: string) => {
+                    const [h, m] = t.split(":").map(Number);
+                    return h * 60 + m;
+                  };
                   if (!sched.enabled) {
-                    return <div className="absolute inset-0 pointer-events-none z-[2]" style={{ backgroundColor: "rgba(0,0,0,0.18)" }} />;
+                    return (
+                      <div
+                        className="absolute inset-0 pointer-events-none z-[2]"
+                        style={{ backgroundColor: "rgba(0,0,0,0.18)" }}
+                      />
+                    );
                   }
                   const dayStartMin = toMin(sched.start);
                   const dayEndMin = toMin(sched.end);
@@ -907,13 +1076,20 @@ export function WeekView({ anchorDate, onModalChange, onDayClick, onWeekChange }
                       {dayStartMin > startMinutes && (
                         <div
                           className="absolute left-0 right-0 top-0 pointer-events-none z-[2]"
-                          style={{ height: minutesToPx(dayStartMin, startMinutes), backgroundColor: "rgba(0,0,0,0.12)" }}
+                          style={{
+                            height: minutesToPx(dayStartMin, startMinutes),
+                            backgroundColor: "rgba(0,0,0,0.12)",
+                          }}
                         />
                       )}
                       {dayEndMin < endMinutes && (
                         <div
                           className="absolute left-0 right-0 pointer-events-none z-[2]"
-                          style={{ top: minutesToPx(dayEndMin, startMinutes), bottom: 0, backgroundColor: "rgba(0,0,0,0.12)" }}
+                          style={{
+                            top: minutesToPx(dayEndMin, startMinutes),
+                            bottom: 0,
+                            backgroundColor: "rgba(0,0,0,0.12)",
+                          }}
                         />
                       )}
                     </>
@@ -949,7 +1125,9 @@ export function WeekView({ anchorDate, onModalChange, onDayClick, onWeekChange }
                       style={{ top, height: MIN_PX * 30, zIndex: 1 }}
                       role="button"
                       tabIndex={0}
-                      onClick={(e) => { if (e.button === 0) handleSlotClick(dateStr, slot); }}
+                      onClick={(e) => {
+                        if (e.button === 0) handleSlotClick(dateStr, slot);
+                      }}
                       onContextMenu={(e) => e.preventDefault()}
                       onKeyDown={(e) => {
                         if (e.key === "Enter" || e.key === " ")
@@ -967,13 +1145,26 @@ export function WeekView({ anchorDate, onModalChange, onDayClick, onWeekChange }
                     compact={isFullWeekMobile}
                     leftPct={block.leftPct}
                     zIdx={block.zIdx}
-                    isDragging={dragGhost !== null && activeDragRef.current?.block.appt.id === block.appt.id && activeDragRef.current?.block.phaseIndex === block.phaseIndex}
-                    onBlockPointerDown={(e) => handleBlockPointerDown(e, block, dateStr)}
+                    isDragging={
+                      dragGhost !== null &&
+                      activeDragRef.current?.block.appt.id === block.appt.id &&
+                      activeDragRef.current?.block.phaseIndex ===
+                        block.phaseIndex
+                    }
+                    onBlockPointerDown={(e) =>
+                      handleBlockPointerDown(e, block, dateStr)
+                    }
                     onBlockPointerMove={handleBlockPointerMove}
-                    onBlockPointerUp={(e) => handleBlockPointerUp(e, block, dateStr)}
+                    onBlockPointerUp={(e) =>
+                      handleBlockPointerUp(e, block, dateStr)
+                    }
                     onBlockPointerCancel={handleBlockPointerCancel}
-                    onResizePointerDown={(e, edge) => handleResizePointerDown(e, block, edge)}
-                    onResizePointerMove={(e) => handleResizePointerMove(e, dateStr)}
+                    onResizePointerDown={(e, edge) =>
+                      handleResizePointerDown(e, block, edge)
+                    }
+                    onResizePointerMove={(e) =>
+                      handleResizePointerMove(e, dateStr)
+                    }
                     onResizePointerUp={(e) => handleResizePointerUp(e, dateStr)}
                     onResizePointerCancel={handleResizePointerCancel}
                     onContextMenu={handleContextMenu}
@@ -987,14 +1178,16 @@ export function WeekView({ anchorDate, onModalChange, onDayClick, onWeekChange }
                     style={{
                       top: dragGhost.topPx + 1,
                       height: Math.max(dragGhost.heightPx - 2, 4),
-                      left: '2px',
+                      left: "2px",
                       zIndex: 50,
                       borderColor: dragGhost.color,
                       backgroundColor: hexToRgba(dragGhost.color, 0.25),
                     }}
                   >
                     <div className="px-1 py-0.5">
-                      <span className="text-[9px] font-bold">{formatTime12(dragGhost.time)}</span>
+                      <span className="text-[9px] font-bold">
+                        {formatTime12(dragGhost.time)}
+                      </span>
                     </div>
                   </div>
                 )}
@@ -1012,7 +1205,9 @@ export function WeekView({ anchorDate, onModalChange, onDayClick, onWeekChange }
                     }}
                   >
                     <div className="px-1 py-0.5">
-                      <span className="text-[9px] font-bold">{resizeGhost.label}</span>
+                      <span className="text-[9px] font-bold">
+                        {resizeGhost.label}
+                      </span>
                     </div>
                   </div>
                 )}
@@ -1089,12 +1284,27 @@ export function WeekView({ anchorDate, onModalChange, onDayClick, onWeekChange }
           <div className="bg-card rounded-2xl shadow-2xl p-5 mx-4 max-w-sm w-full">
             <p className="text-sm font-semibold mb-1">Move appointment?</p>
             <p className="text-sm text-muted-foreground mb-2">
-              Move <span className="font-medium text-foreground">{dropConfirm.appt.clientName}</span> to{' '}
-              <span className="font-medium text-accent">{new Date(`${dropConfirm.newDate}T00:00:00`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</span>{' '}
-              at <span className="font-medium text-accent">{formatTime12(dropConfirm.newTime)}</span>?
+              Move{" "}
+              <span className="font-medium text-foreground">
+                {dropConfirm.appt.clientName}
+              </span>{" "}
+              to{" "}
+              <span className="font-medium text-accent">
+                {new Date(`${dropConfirm.newDate}T00:00:00`).toLocaleDateString(
+                  "en-US",
+                  { weekday: "short", month: "short", day: "numeric" },
+                )}
+              </span>{" "}
+              at{" "}
+              <span className="font-medium text-accent">
+                {formatTime12(dropConfirm.newTime)}
+              </span>
+              ?
             </p>
             {dropConfirm.outsideHours && (
-              <p className="text-xs text-amber-600 dark:text-amber-400 mb-3">⚠ {dropConfirm.outsideHours}</p>
+              <p className="text-xs text-amber-600 dark:text-amber-400 mb-3">
+                ⚠ {dropConfirm.outsideHours}
+              </p>
             )}
             <div className="flex gap-2">
               <button
@@ -1183,7 +1393,7 @@ function WeekBlock({
         height: Math.max(heightPx - 2, 4),
         left: `calc(${leftPct} + 2px)`,
         zIndex,
-        borderLeft: leftPct !== '0%' ? `3px solid ${color}` : undefined,
+        borderLeft: leftPct !== "0%" ? `3px solid ${color}` : undefined,
         opacity: isDragging ? 0.35 : 1,
         ...bgStyle,
       }}

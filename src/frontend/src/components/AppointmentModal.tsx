@@ -3,14 +3,30 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { AlertTriangle, Info, X } from "lucide-react";
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useShallow } from "zustand/shallow";
 import {
   createAppointment,
   getClientNames,
   updateAppointment,
 } from "../lib/api";
-import { doBlocksOverlap, findAvailableSlots, findNextAvailable, formatDate, formatDuration, formatTime12, getTodayString, getWorkingScheduleForDate } from "../lib/utils";
+import {
+  doBlocksOverlap,
+  findAvailableSlots,
+  findNextAvailable,
+  formatDate,
+  formatDuration,
+  formatTime12,
+  getTodayString,
+  getWorkingScheduleForDate,
+} from "../lib/utils";
+import type { SlotSuggestion } from "../lib/utils";
 import { useAppStore } from "../store/useAppStore";
 import type {
   Appointment,
@@ -18,7 +34,6 @@ import type {
   PhaseInstance,
   Service,
 } from "../types";
-import type { SlotSuggestion } from "../lib/utils";
 
 interface Props {
   isOpen: boolean;
@@ -105,7 +120,16 @@ export default function AppointmentModal({
   const [clientSuggestions, setClientSuggestions] = useState<string[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [clientHistory, setClientHistory] = useState<
-    Record<string, { serviceId: string; serviceName: string; lastDate: string; phone?: string; notes?: string }>
+    Record<
+      string,
+      {
+        serviceId: string;
+        serviceName: string;
+        lastDate: string;
+        phone?: string;
+        notes?: string;
+      }
+    >
   >({});
   const [showServiceBanner, setShowServiceBanner] = useState(false);
   const [pendingServiceId, setPendingServiceId] = useState<string | null>(null);
@@ -114,7 +138,9 @@ export default function AppointmentModal({
     isProcessing: boolean;
   } | null>(null);
   const [overlapConfirmed, setOverlapConfirmed] = useState(false);
-  const [outsideHoursWarning, setOutsideHoursWarning] = useState<string | null>(null);
+  const [outsideHoursWarning, setOutsideHoursWarning] = useState<string | null>(
+    null,
+  );
   const [outsideHoursConfirmed, setOutsideHoursConfirmed] = useState(false);
   const [findingNext, setFindingNext] = useState(false);
   const [findNextMsg, setFindNextMsg] = useState<string | null>(null);
@@ -192,7 +218,16 @@ export default function AppointmentModal({
       const merged = [...new Set([...names, ...contactNames])].sort();
       setAllClientNames(merged);
       // Build client history map from current appointments ref
-      const hist: Record<string, { serviceId: string; serviceName: string; lastDate: string; phone?: string; notes?: string }> = {};
+      const hist: Record<
+        string,
+        {
+          serviceId: string;
+          serviceName: string;
+          lastDate: string;
+          phone?: string;
+          notes?: string;
+        }
+      > = {};
       for (const c of clientContacts) {
         hist[c.name] = {
           serviceId: "",
@@ -230,7 +265,9 @@ export default function AppointmentModal({
     if (!isOpen) return;
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
-    return () => { document.body.style.overflow = prev; };
+    return () => {
+      document.body.style.overflow = prev;
+    };
   }, [isOpen]);
 
   // Click outside to close suggestions
@@ -256,15 +293,30 @@ export default function AppointmentModal({
     }));
   }, []);
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: appointments/services consumed via refs; stable refs avoid React #185 infinite loop
   const slotSuggestions = useMemo<SlotSuggestion[]>(() => {
     if (!isOpen || !form.serviceId || !form.date) return [];
-    const svc = servicesRef.current.find((s) => s.id === form.serviceId) ?? null;
+    const svc =
+      servicesRef.current.find((s) => s.id === form.serviceId) ?? null;
     // Always use form duration — it's set from the service on select and respects manual overrides.
     // svc.totalDurationMinutes may be undefined for older ICP records.
     const dur = form.durationHours * 60 + form.durationMinutes;
-    return findAvailableSlots(form.date, svc, dur, appointmentsRef.current, settings, appointment?.id);
-  }, [isOpen, form.serviceId, form.date, form.durationHours, form.durationMinutes, settings, appointment?.id]);
+    return findAvailableSlots(
+      form.date,
+      svc,
+      dur,
+      appointmentsRef.current,
+      settings,
+      appointment?.id,
+    );
+  }, [
+    isOpen,
+    form.serviceId,
+    form.date,
+    form.durationHours,
+    form.durationMinutes,
+    settings,
+    appointment?.id,
+  ]);
 
   if (!isOpen) return null;
 
@@ -277,9 +329,12 @@ export default function AppointmentModal({
   function handleClientChange(val: string) {
     const capitalized = capitalizeWords(val);
     setForm((f) => ({ ...f, clientName: capitalized }));
-    const matches = capitalized.length >= 1
-      ? allClientNames.filter((n) => n.toLowerCase().startsWith(capitalized.toLowerCase()))
-      : allClientNames;
+    const matches =
+      capitalized.length >= 1
+        ? allClientNames.filter((n) =>
+            n.toLowerCase().startsWith(capitalized.toLowerCase()),
+          )
+        : allClientNames;
     setClientSuggestions(matches.slice(0, 8));
     setShowSuggestions(matches.length > 0);
   }
@@ -417,11 +472,17 @@ export default function AppointmentModal({
   function checkWorkingHours(): string | null {
     if (!form.date || !form.startTime) return null;
     const schedule = getWorkingScheduleForDate(form.date, settings);
-    const dayName = new Date(`${form.date}T00:00:00`).toLocaleDateString("en-US", { weekday: "long" });
+    const dayName = new Date(`${form.date}T00:00:00`).toLocaleDateString(
+      "en-US",
+      { weekday: "long" },
+    );
     if (!schedule.enabled) {
       return `${dayName} is not in your working schedule.`;
     }
-    const toMin = (t: string) => { const [h, m] = t.split(":").map(Number); return h * 60 + m; };
+    const toMin = (t: string) => {
+      const [h, m] = t.split(":").map(Number);
+      return h * 60 + m;
+    };
     const apptStart = toMin(form.startTime);
     const apptEnd = apptStart + form.durationHours * 60 + form.durationMinutes;
     const schedStart = toMin(schedule.start);
@@ -434,7 +495,8 @@ export default function AppointmentModal({
 
   function handleSelectSlot(slot: SlotSuggestion) {
     setForm((f) => {
-      const newPhases = f.phases.length > 0 ? recalcPhaseStarts(f.phases, slot.time) : f.phases;
+      const newPhases =
+        f.phases.length > 0 ? recalcPhaseStarts(f.phases, slot.time) : f.phases;
       return { ...f, date: slot.date, startTime: slot.time, phases: newPhases };
     });
     setOutsideHoursWarning(null);
@@ -448,20 +510,33 @@ export default function AppointmentModal({
     const svc = services.find((s) => s.id === form.serviceId) ?? null;
     const dur = form.durationHours * 60 + form.durationMinutes;
     if (dur === 0) {
-      setFindNextMsg("No duration set — edit this service in Services to add a duration.");
+      setFindNextMsg(
+        "No duration set — edit this service in Services to add a duration.",
+      );
       return;
     }
     setFindingNext(true);
     setFindNextMsg(null);
     // Yield to React so "Searching…" renders before the synchronous scan
     await new Promise<void>((resolve) => setTimeout(resolve, 0));
-    const result = findNextAvailable(form.date || getTodayString(), svc, dur, appointments, settings, appointment?.id);
+    const result = findNextAvailable(
+      form.date || getTodayString(),
+      svc,
+      dur,
+      appointments,
+      settings,
+      appointment?.id,
+    );
     setFindingNext(false);
     if (result) {
       const changedDate = result.date !== form.date;
       handleSelectSlot(result);
       if (changedDate) {
-        const label = formatDate(result.date, { weekday: "long", month: "long", day: "numeric" });
+        const label = formatDate(result.date, {
+          weekday: "long",
+          month: "long",
+          day: "numeric",
+        });
         setFindNextMsg(`Moved to ${label}`);
       }
     } else {
@@ -469,7 +544,10 @@ export default function AppointmentModal({
     }
   }
 
-  async function handleSubmit(skipOverlapCheck = false, skipHoursCheck = false) {
+  async function handleSubmit(
+    skipOverlapCheck = false,
+    skipHoursCheck = false,
+  ) {
     if (
       !form.clientName.trim() ||
       !form.serviceId ||
@@ -535,7 +613,11 @@ export default function AppointmentModal({
             d.setDate(d.getDate() + i * recurWeeks * 7);
             const recurDate = d.toISOString().slice(0, 10);
             const recurPhases = input.phases.map((p) => ({ ...p }));
-            const recurInput = { ...input, date: recurDate, phases: recurPhases };
+            const recurInput = {
+              ...input,
+              date: recurDate,
+              phases: recurPhases,
+            };
             const recurCreated = await createAppointment(recurInput);
             addAppointment(recurCreated);
           }
@@ -637,7 +719,10 @@ export default function AppointmentModal({
             data-ocid="appointment.outside_hours_warning"
           >
             <div className="flex gap-2 items-start">
-              <AlertTriangle size={16} className="text-accent mt-0.5 shrink-0" />
+              <AlertTriangle
+                size={16}
+                className="text-accent mt-0.5 shrink-0"
+              />
               <p className="text-sm">{outsideHoursWarning} Book anyway?</p>
             </div>
             <div className="flex gap-2">
@@ -713,7 +798,10 @@ export default function AppointmentModal({
         )}
 
         {/* Scrollable form body */}
-        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4" style={{ overscrollBehavior: "contain" }}>
+        <div
+          className="flex-1 overflow-y-auto px-5 py-4 space-y-4"
+          style={{ overscrollBehavior: "contain" }}
+        >
           {/* Client name with autocomplete */}
           <div className="relative" ref={suggestRef}>
             <Label
@@ -727,9 +815,14 @@ export default function AppointmentModal({
               value={form.clientName}
               onChange={(e) => handleClientChange(e.target.value)}
               onFocus={() => {
-                const matches = form.clientName.length >= 1
-                  ? allClientNames.filter((n) => n.toLowerCase().startsWith(form.clientName.toLowerCase()))
-                  : allClientNames;
+                const matches =
+                  form.clientName.length >= 1
+                    ? allClientNames.filter((n) =>
+                        n
+                          .toLowerCase()
+                          .startsWith(form.clientName.toLowerCase()),
+                      )
+                    : allClientNames;
                 setClientSuggestions(matches.slice(0, 8));
                 setShowSuggestions(matches.length > 0);
               }}
@@ -754,7 +847,9 @@ export default function AppointmentModal({
                       }}
                     >
                       <span className="min-w-0">
-                        <span className="block font-medium truncate">{name}</span>
+                        <span className="block font-medium truncate">
+                          {name}
+                        </span>
                         {hist?.phone && (
                           <span className="block text-xs text-muted-foreground truncate">
                             {hist.phone}
@@ -764,7 +859,12 @@ export default function AppointmentModal({
                       {hist?.serviceName && (
                         <span className="text-xs text-muted-foreground text-right shrink-0">
                           <span className="block">{hist.serviceName}</span>
-                          <span className="block opacity-70">{formatDate(hist.lastDate, { month: "short", day: "numeric" })}</span>
+                          <span className="block opacity-70">
+                            {formatDate(hist.lastDate, {
+                              month: "short",
+                              day: "numeric",
+                            })}
+                          </span>
                         </span>
                       )}
                     </button>
@@ -865,7 +965,11 @@ export default function AppointmentModal({
                 <div>
                   <span className="text-sm font-medium">Suggested Times</span>
                   <span className="text-xs text-muted-foreground ml-2">
-                    {formatDate(form.date, { weekday: "short", month: "short", day: "numeric" })}
+                    {formatDate(form.date, {
+                      weekday: "short",
+                      month: "short",
+                      day: "numeric",
+                    })}
                   </span>
                 </div>
                 <button
@@ -879,7 +983,9 @@ export default function AppointmentModal({
                 </button>
               </div>
               {findNextMsg && (
-                <p className={`text-xs mb-2 px-2 py-1 rounded-md ${findNextMsg.startsWith("No") ? "text-muted-foreground bg-muted" : "text-accent bg-accent/10"}`}>
+                <p
+                  className={`text-xs mb-2 px-2 py-1 rounded-md ${findNextMsg.startsWith("No") ? "text-muted-foreground bg-muted" : "text-accent bg-accent/10"}`}
+                >
                   {findNextMsg}
                 </p>
               )}
@@ -887,20 +993,25 @@ export default function AppointmentModal({
                 <p className="text-xs text-muted-foreground italic">
                   {form.durationHours === 0 && form.durationMinutes === 0
                     ? "No duration set — edit this service in Services to add a duration."
-                    : "No open slots on this day — try \"Next available →\"."}
+                    : 'No open slots on this day — try "Next available →".'}
                 </p>
               ) : (
                 <div className="flex flex-col gap-1.5">
                   {(() => {
-                    const selectedIdx = slotSuggestions.findIndex((s) => s.time === form.startTime && s.date === form.date);
+                    const selectedIdx = slotSuggestions.findIndex(
+                      (s) => s.time === form.startTime && s.date === form.date,
+                    );
                     // Always include the selected slot even if it falls past position 6
                     const base = slotSuggestions.slice(0, 6);
-                    const selected = selectedIdx >= 6 ? slotSuggestions[selectedIdx] : null;
+                    const selected =
+                      selectedIdx >= 6 ? slotSuggestions[selectedIdx] : null;
                     const visible = selected ? [...base, selected] : base;
                     return (
                       <>
                         {visible.map((slot) => {
-                          const isSelected = slot.time === form.startTime && slot.date === form.date;
+                          const isSelected =
+                            slot.time === form.startTime &&
+                            slot.date === form.date;
                           return (
                             <button
                               key={`${slot.date}-${slot.time}`}
@@ -913,8 +1024,12 @@ export default function AppointmentModal({
                               }`}
                               data-ocid={`appointment.slot_${slot.time}`}
                             >
-                              <span className="font-medium">{formatTime12(slot.time)}</span>
-                              <span className={`text-xs ${isSelected ? "text-accent/80" : "text-muted-foreground"}`}>
+                              <span className="font-medium">
+                                {formatTime12(slot.time)}
+                              </span>
+                              <span
+                                className={`text-xs ${isSelected ? "text-accent/80" : "text-muted-foreground"}`}
+                              >
                                 {slot.type === "processing-gap"
                                   ? `in ${slot.duringClient}'s processing gap`
                                   : "open slot"}
@@ -923,7 +1038,10 @@ export default function AppointmentModal({
                           );
                         })}
                         {slotSuggestions.length > 6 && (
-                          <p className="text-xs text-muted-foreground text-center">+{slotSuggestions.length - 6} more — set time manually above</p>
+                          <p className="text-xs text-muted-foreground text-center">
+                            +{slotSuggestions.length - 6} more — set time
+                            manually above
+                          </p>
                         )}
                       </>
                     );
@@ -1081,7 +1199,10 @@ export default function AppointmentModal({
               htmlFor="appt-notes"
               className="text-sm font-medium mb-1.5 block"
             >
-              Client Notes <span className="text-xs font-normal text-muted-foreground">(shared with client profile)</span>
+              Client Notes{" "}
+              <span className="text-xs font-normal text-muted-foreground">
+                (shared with client profile)
+              </span>
             </Label>
             <Textarea
               id="appt-notes"
@@ -1109,7 +1230,9 @@ export default function AppointmentModal({
               <span
                 className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 transition-colors ${recurEnabled ? "bg-accent border-accent" : "border-border"}`}
               >
-                {recurEnabled && <span className="text-white text-[10px] font-bold">✓</span>}
+                {recurEnabled && (
+                  <span className="text-white text-[10px] font-bold">✓</span>
+                )}
               </span>
               Repeat this appointment
             </button>
@@ -1122,7 +1245,9 @@ export default function AppointmentModal({
                   className="rounded border border-input bg-background px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-accent/50"
                 >
                   {[1, 2, 3, 4, 6, 8].map((w) => (
-                    <option key={w} value={w}>{w} {w === 1 ? "week" : "weeks"}</option>
+                    <option key={w} value={w}>
+                      {w} {w === 1 ? "week" : "weeks"}
+                    </option>
                   ))}
                 </select>
                 <span className="text-muted-foreground">for</span>
@@ -1132,7 +1257,9 @@ export default function AppointmentModal({
                   className="rounded border border-input bg-background px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-accent/50"
                 >
                   {[2, 3, 4, 6, 8, 12, 26, 52].map((n) => (
-                    <option key={n} value={n}>{n} appointments</option>
+                    <option key={n} value={n}>
+                      {n} appointments
+                    </option>
                   ))}
                 </select>
               </div>
@@ -1172,8 +1299,9 @@ export default function AppointmentModal({
                   : "Save Changes"}
             </Button>
           </div>
-          {mode === "edit" && appointment && (
-            confirmDelete ? (
+          {mode === "edit" &&
+            appointment &&
+            (confirmDelete ? (
               <div className="flex gap-2">
                 <Button
                   type="button"
@@ -1206,8 +1334,7 @@ export default function AppointmentModal({
               >
                 Delete Appointment
               </Button>
-            )
-          )}
+            ))}
         </div>
       </div>
     </dialog>

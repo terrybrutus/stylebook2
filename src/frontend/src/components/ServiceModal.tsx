@@ -605,8 +605,9 @@ export function ServiceModal({ open, service, onClose }: ServiceModalProps) {
                   aria-label="Hours"
                 >
                   {Array.from({ length: 13 }, (_, i) => i).map((h) => (
-                    // biome-ignore lint/suspicious/noArrayIndexKey: static numeric range
-                    <option key={h} value={h}>{h}h</option>
+                    <option key={h} value={h}>
+                      {h}h
+                    </option>
                   ))}
                 </select>
                 <select
@@ -617,7 +618,9 @@ export function ServiceModal({ open, service, onClose }: ServiceModalProps) {
                   aria-label="Minutes"
                 >
                   {[0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55].map((m) => (
-                    <option key={m} value={m}>{m}m</option>
+                    <option key={m} value={m}>
+                      {m}m
+                    </option>
                   ))}
                 </select>
               </div>
