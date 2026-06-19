@@ -2,7 +2,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { AlertTriangle, Info, X } from "lucide-react";
+import { AlertTriangle, Info, Plus, RotateCcw, Trash2, X } from "lucide-react";
 import React, {
   useCallback,
   useEffect,
@@ -92,6 +92,18 @@ function recalcPhaseStarts(
     cursor += p.durationMinutes;
     return { ...p, startTime: `${hh}:${mm}` };
   });
+}
+
+function buildSinglePhaseFromForm(form: FormState): PhaseInstance {
+  return {
+    name: "Appointment",
+    durationMinutes: Math.max(
+      5,
+      form.durationHours * 60 + form.durationMinutes,
+    ),
+    phaseType: "active",
+    startTime: form.startTime,
+  };
 }
 
 export default function AppointmentModal({
@@ -415,6 +427,76 @@ export default function AppointmentModal({
         durationMinutes: totalMin % 60,
       };
     });
+  }
+
+  function handlePhaseTypeChange(
+    idx: number,
+    phaseType: "active" | "processing",
+  ) {
+    setForm((f) => ({
+      ...f,
+      phases: f.phases.map((p, i) => (i === idx ? { ...p, phaseType } : p)),
+    }));
+  }
+
+  function handleRemovePhase(idx: number) {
+    setForm((f) => {
+      const next = f.phases.filter((_, i) => i !== idx);
+      const recalced = recalcPhaseStarts(next, f.startTime);
+      const totalMin = recalced.reduce((sum, p) => sum + p.durationMinutes, 0);
+      return {
+        ...f,
+        phases: recalced,
+        durationHours: Math.floor(totalMin / 60),
+        durationMinutes: totalMin % 60,
+      };
+    });
+  }
+
+  function handleAddPhase() {
+    setForm((f) => {
+      const next = [
+        ...(f.phases.length > 0 ? f.phases : [buildSinglePhaseFromForm(f)]),
+        {
+          name: "New Phase",
+          durationMinutes: 15,
+          phaseType: "active" as const,
+          startTime: f.startTime,
+        },
+      ];
+      const recalced = recalcPhaseStarts(next, f.startTime);
+      const totalMin = recalced.reduce((sum, p) => sum + p.durationMinutes, 0);
+      return {
+        ...f,
+        phases: recalced,
+        durationHours: Math.floor(totalMin / 60),
+        durationMinutes: totalMin % 60,
+      };
+    });
+  }
+
+  function handleUseServicePhases() {
+    const svc = services.find((s) => s.id === form.serviceId);
+    if (!svc) return;
+    const phases =
+      svc.category === "multi"
+        ? buildPhasesFromService(svc, form.startTime)
+        : [
+            {
+              name: svc.name,
+              durationMinutes: svc.totalDurationMinutes,
+              phaseType: "active" as const,
+              startTime: form.startTime,
+            },
+          ];
+    const totalMin = phases.reduce((sum, p) => sum + p.durationMinutes, 0);
+    setForm((f) => ({
+      ...f,
+      phases,
+      durationHours: Math.floor(totalMin / 60),
+      durationMinutes: totalMin % 60,
+      price: String(svc.price),
+    }));
   }
 
   function checkOverlap(): { message: string; isProcessing: boolean } | null {
@@ -1120,76 +1202,166 @@ export default function AppointmentModal({
             />
           </div>
 
-          {/* Multiphase breakdown */}
-          {form.phases.length > 0 && (
+          {/* Appointment phases */}
+          {form.serviceId && (
             <div
               className="rounded-lg border border-border p-3 space-y-3"
               data-ocid="appointment.phases_section"
             >
-              <p className="text-sm font-semibold">Phase Breakdown</p>
-              {form.phases.map((phase, idx) => {
-                const ph = Math.floor(phase.durationMinutes / 60);
-                const pm = phase.durationMinutes % 60;
-                return (
-                  <div
-                    key={`phase-${String(idx)}`}
-                    className="space-y-2"
-                    data-ocid={`appointment.phase.${idx + 1}`}
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold">Appointment Phases</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Edits here affect this appointment only.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleUseServicePhases}
+                  className="text-xs text-accent font-medium hover:underline flex items-center gap-1 shrink-0"
+                  data-ocid="appointment.reset_service_phases_button"
+                >
+                  <RotateCcw size={12} />
+                  Service defaults
+                </button>
+              </div>
+              {form.phases.length === 0 ? (
+                <div className="rounded-lg bg-muted/40 p-3">
+                  <p className="text-xs text-muted-foreground mb-2">
+                    This appointment is currently a single continuous block.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={handleAddPhase}
+                    className="text-xs text-accent font-medium hover:underline inline-flex items-center gap-1"
+                    data-ocid="appointment.customize_phases_button"
                   >
-                    <div className="flex items-center gap-2">
-                      <span
-                        className={`w-2 h-2 rounded-full ${phase.phaseType === "processing" ? "bg-muted-foreground" : "bg-accent"}`}
-                      />
-                      <PhaseNameInput
-                        idx={idx}
-                        value={phase.name}
-                        onChange={handlePhaseNameChange}
-                      />
-                      <div className="flex gap-1.5 shrink-0">
-                        <select
-                          value={ph}
-                          onChange={(e) =>
-                            handlePhaseDurationChange(
-                              idx,
-                              Number(e.target.value),
-                              pm,
-                            )
-                          }
-                          className="w-16 rounded-md border border-input bg-background text-foreground px-1 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                        >
-                          {Array.from({ length: 13 }, (_, i) => i).map((h) => (
-                            <option key={h} value={h}>
-                              {h}h
-                            </option>
-                          ))}
-                        </select>
-                        <select
-                          value={pm}
-                          onChange={(e) =>
-                            handlePhaseDurationChange(
-                              idx,
-                              ph,
-                              Number(e.target.value),
-                            )
-                          }
-                          className="w-16 rounded-md border border-input bg-background text-foreground px-1 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                        >
-                          {[0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55].map(
-                            (m) => (
-                              <option key={m} value={m}>
-                                {m}m
-                              </option>
-                            ),
+                    <Plus size={13} />
+                    Customize phases
+                  </button>
+                </div>
+              ) : (
+                <>
+                  {form.phases.map((phase, idx) => {
+                    const ph = Math.floor(phase.durationMinutes / 60);
+                    const pm = phase.durationMinutes % 60;
+                    return (
+                      <div
+                        key={`phase-${String(idx)}`}
+                        className="rounded-lg border border-border bg-card p-3 space-y-2"
+                        data-ocid={`appointment.phase.${idx + 1}`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <span
+                            className={`w-2 h-2 rounded-full shrink-0 ${phase.phaseType === "processing" ? "bg-muted-foreground" : "bg-accent"}`}
+                          />
+                          <span className="text-xs font-semibold text-muted-foreground w-5">
+                            {idx + 1}
+                          </span>
+                          <PhaseNameInput
+                            idx={idx}
+                            value={phase.name}
+                            onChange={handlePhaseNameChange}
+                          />
+                          {form.phases.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => handleRemovePhase(idx)}
+                              className="p-1.5 rounded-lg hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors shrink-0"
+                              aria-label="Remove phase"
+                              data-ocid={`appointment.remove_phase.${idx + 1}`}
+                            >
+                              <Trash2 size={14} />
+                            </button>
                           )}
-                        </select>
+                          <div className="flex gap-1.5 shrink-0">
+                            <select
+                              value={ph}
+                              onChange={(e) =>
+                                handlePhaseDurationChange(
+                                  idx,
+                                  Number(e.target.value),
+                                  pm,
+                                )
+                              }
+                              className="w-16 rounded-md border border-input bg-background text-foreground px-1 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                            >
+                              {Array.from({ length: 13 }, (_, i) => i).map(
+                                (h) => (
+                                  <option key={h} value={h}>
+                                    {h}h
+                                  </option>
+                                ),
+                              )}
+                            </select>
+                            <select
+                              value={pm}
+                              onChange={(e) =>
+                                handlePhaseDurationChange(
+                                  idx,
+                                  ph,
+                                  Number(e.target.value),
+                                )
+                              }
+                              className="w-16 rounded-md border border-input bg-background text-foreground px-1 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                            >
+                              {[
+                                0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55,
+                              ].map((m) => (
+                                <option key={m} value={m}>
+                                  {m}m
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+                        <div className="flex justify-end pl-7">
+                          <div className="flex rounded-md border border-input overflow-hidden">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handlePhaseTypeChange(idx, "active")
+                              }
+                              className={`px-2.5 py-1.5 text-xs font-medium transition-colors ${
+                                phase.phaseType === "active"
+                                  ? "bg-accent text-accent-foreground"
+                                  : "bg-background text-muted-foreground hover:bg-muted"
+                              }`}
+                            >
+                              Active
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handlePhaseTypeChange(idx, "processing")
+                              }
+                              className={`px-2.5 py-1.5 text-xs font-medium transition-colors ${
+                                phase.phaseType === "processing"
+                                  ? "bg-accent text-accent-foreground"
+                                  : "bg-background text-muted-foreground hover:bg-muted"
+                              }`}
+                            >
+                              Processing
+                            </button>
+                          </div>
+                        </div>
+                        <p className="text-xs text-muted-foreground pl-4">
+                          Starts {phase.startTime} · {phase.phaseType}
+                        </p>
                       </div>
-                    </div>
-                    <p className="text-xs text-muted-foreground pl-4">
-                      Starts {phase.startTime} · {phase.phaseType}
-                    </p>
-                  </div>
-                );
-              })}
+                    );
+                  })}
+                  <button
+                    type="button"
+                    onClick={handleAddPhase}
+                    className="flex items-center justify-center gap-2 w-full py-2 rounded-lg border-2 border-dashed border-accent/40 text-accent text-sm font-medium hover:border-accent hover:bg-accent/5 transition-colors"
+                    data-ocid="appointment.add_phase_button"
+                  >
+                    <Plus size={15} />
+                    Add Phase
+                  </button>
+                </>
+              )}
             </div>
           )}
 

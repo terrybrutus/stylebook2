@@ -54,6 +54,7 @@ interface AppState {
   updateSettings: (patch: Partial<Settings>) => void;
 
   // Actions — Client Contacts
+  setClientContacts: (contacts: ClientContact[]) => void;
   addClientContact: (contact: ClientContact) => void;
   updateClientContact: (name: string, patch: Partial<ClientContact>) => void;
   deleteClientContact: (name: string) => void;
@@ -75,12 +76,18 @@ const DEFAULT_SETTINGS: Settings = {
   workingHoursEnd: "19:00",
   workingDays: {
     sun: { enabled: false, start: "09:00", end: "13:00" },
-    mon: { enabled: true,  start: "07:00", end: "10:00" },
+    mon: { enabled: true, start: "07:00", end: "10:00" },
     tue: { enabled: false, start: "07:00", end: "10:00" },
-    wed: { enabled: true,  start: "16:00", end: "19:00" },
+    wed: { enabled: true, start: "16:00", end: "19:00" },
     thu: { enabled: false, start: "07:00", end: "10:00" },
-    fri: { enabled: true,  start: "07:00", end: "10:00" },
-    sat: { enabled: true,  start: "09:00", end: "13:00", biweekly: true, biweeklyRef: "2026-06-07" },
+    fri: { enabled: true, start: "07:00", end: "10:00" },
+    sat: {
+      enabled: true,
+      start: "09:00",
+      end: "13:00",
+      biweekly: true,
+      biweeklyRef: "2026-06-07",
+    },
   },
 };
 
@@ -151,7 +158,8 @@ export const useAppStore = create<AppState>()(
       undo: () =>
         set((state) => {
           if (state.appointmentHistory.length === 0) return state;
-          const entry = state.appointmentHistory[state.appointmentHistory.length - 1];
+          const entry =
+            state.appointmentHistory[state.appointmentHistory.length - 1];
           return {
             appointmentHistory: state.appointmentHistory.slice(0, -1),
             appointmentFuture: [
@@ -201,9 +209,12 @@ export const useAppStore = create<AppState>()(
       setPendingCalendarDate: (date) => set({ pendingCalendarDate: date }),
 
       // Client contact actions
+      setClientContacts: (contacts) => set({ clientContacts: contacts }),
       addClientContact: (contact) =>
         set((state) => ({
-          clientContacts: state.clientContacts.some((c) => c.name === contact.name)
+          clientContacts: state.clientContacts.some(
+            (c) => c.name === contact.name,
+          )
             ? state.clientContacts
             : [...state.clientContacts, contact],
         })),
@@ -235,9 +246,16 @@ export const useAppStore = create<AppState>()(
       name: "stylebook-store",
       version: 2,
       migrate: (persisted, _version) => {
-        const s = persisted as { settings?: Partial<typeof DEFAULT_SETTINGS>; clientContacts?: ClientContact[] };
+        const s = persisted as {
+          settings?: Partial<typeof DEFAULT_SETTINGS>;
+          clientContacts?: ClientContact[];
+        };
         return {
-          settings: { ...DEFAULT_SETTINGS, ...(s.settings ?? {}), workingDays: DEFAULT_SETTINGS.workingDays },
+          settings: {
+            ...DEFAULT_SETTINGS,
+            ...(s.settings ?? {}),
+            workingDays: DEFAULT_SETTINGS.workingDays,
+          },
           clientContacts: s.clientContacts ?? [],
         };
       },

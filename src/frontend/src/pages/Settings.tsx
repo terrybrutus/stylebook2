@@ -1,32 +1,36 @@
-import { Calendar, Clock, Download, Moon, Palette, Share2, Sun, Trash2 } from "lucide-react";
+import {
+  Calendar,
+  Clock,
+  DatabaseBackup,
+  Download,
+  Moon,
+  Palette,
+  Share2,
+  Sun,
+  Trash2,
+  Upload,
+} from "lucide-react";
 import { useTheme } from "next-themes";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useShallow } from "zustand/shallow";
 import * as api from "../lib/api";
+import {
+  type CsvAppointmentRow,
+  type ParsedBackupImport,
+  type StyleBookBackupData,
+  buildAppointmentCSV,
+  buildClientContactsFromCsvRows,
+  buildFullBackup,
+  parseBackupImport,
+} from "../lib/backup";
 import { formatDate, formatTime12 } from "../lib/utils";
 import { useAppStore } from "../store/useAppStore";
-import type { Appointment, ClientContact, WorkingDaySchedule } from "../types";
-
-function buildCSV(appointments: Appointment[], clientContacts: ClientContact[]): string {
-  const contactMap = new Map(clientContacts.map((c) => [c.name, c]));
-  const header = "Date,Time,Client,Service,Duration (min),Price,Phone,Notes";
-  const rows = [...appointments]
-    .sort((a, b) => a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime))
-    .map((a) => {
-      const contact = contactMap.get(a.clientName);
-      return [
-        a.date,
-        a.startTime,
-        `"${a.clientName.replace(/"/g, '""')}"`,
-        `"${a.serviceName.replace(/"/g, '""')}"`,
-        a.durationMinutes,
-        a.price,
-        contact?.phone ?? "",
-        `"${((contact?.notes ?? a.notes ?? "")).replace(/"/g, '""')}"`,
-      ].join(",");
-    });
-  return [header, ...rows].join("\n");
-}
+import type {
+  Appointment,
+  ClientContact,
+  Service,
+  WorkingDaySchedule,
+} from "../types";
 
 function buildTextBackup(appointments: Appointment[]): string {
   const date = new Date().toLocaleDateString("en-US", {
@@ -47,19 +51,31 @@ function buildTextBackup(appointments: Appointment[]): string {
   }
 
   lines.push("=== CLIENTS ===");
-  for (const [name, appts] of [...clientMap.entries()].sort(([a], [b]) => a.localeCompare(b))) {
+  for (const [name, appts] of [...clientMap.entries()].sort(([a], [b]) =>
+    a.localeCompare(b),
+  )) {
     const total = appts.reduce((s, a) => s + a.price, 0);
     const phone = appts.find((a) => a.phoneNumber)?.phoneNumber ?? "";
-    lines.push(`${name}${phone ? ` | ${phone}` : ""} | ${appts.length} visit${appts.length !== 1 ? "s" : ""} | $${total}`);
+    lines.push(
+      `${name}${phone ? ` | ${phone}` : ""} | ${appts.length} visit${appts.length !== 1 ? "s" : ""} | $${total}`,
+    );
   }
   lines.push("");
 
   lines.push("=== APPOINTMENTS ===");
   const sorted = [...appointments].sort(
-    (a, b) => a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime),
+    (a, b) =>
+      a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime),
   );
   for (const a of sorted) {
-    const parts = [a.date, a.startTime, a.clientName, a.serviceName, `$${a.price}`, `${a.durationMinutes}min`];
+    const parts = [
+      a.date,
+      a.startTime,
+      a.clientName,
+      a.serviceName,
+      `$${a.price}`,
+      `${a.durationMinutes}min`,
+    ];
     if (a.phoneNumber) parts.push(a.phoneNumber);
     if (a.notes) parts.push(a.notes);
     lines.push(parts.join(" | "));
@@ -69,7 +85,7 @@ function buildTextBackup(appointments: Appointment[]): string {
 }
 
 const DAY_KEYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"] as const;
-type DayKey = typeof DAY_KEYS[number];
+type DayKey = (typeof DAY_KEYS)[number];
 const DAY_LABELS: Record<DayKey, string> = {
   sun: "Sunday",
   mon: "Monday",
@@ -80,14 +96,58 @@ const DAY_LABELS: Record<DayKey, string> = {
   sat: "Saturday",
 };
 
+const IMPORT_SERVICE_COLORS = [
+  "#D4A5B5",
+  "#C4A0C4",
+  "#7EB8D4",
+  "#88C5A0",
+  "#D4B88C",
+  "#9DB8C5",
+];
+
+function downloadTextFile(fileName: string, text: string, type: string) {
+  const blob = new Blob([text], { type });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = fileName;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function buildPhasesFromService(service: Service, startTime: string) {
+  if (service.category !== "multi" || service.phases.length === 0) return [];
+  const [sh, sm] = startTime.split(":").map(Number);
+  let cursor = sh * 60 + sm;
+  return service.phases.map((p) => {
+    const hh = String(Math.floor(cursor / 60)).padStart(2, "0");
+    const mm = String(cursor % 60).padStart(2, "0");
+    cursor += p.durationMinutes;
+    return {
+      name: p.name,
+      durationMinutes: p.durationMinutes,
+      phaseType: p.phaseType,
+      startTime: `${hh}:${mm}`,
+    };
+  });
+}
+
 export default function Settings() {
   const settings = useAppStore(useShallow((s) => s.settings));
   const appointments = useAppStore(useShallow((s) => s.appointments));
+  const services = useAppStore(useShallow((s) => s.services));
   const clientContacts = useAppStore(useShallow((s) => s.clientContacts));
   const updateSettings = useAppStore((s) => s.updateSettings);
+  const setSettings = useAppStore((s) => s.setSettings);
+  const setAppointments = useAppStore((s) => s.setAppointments);
+  const setServices = useAppStore((s) => s.setServices);
+  const setClientContacts = useAppStore((s) => s.setClientContacts);
   const deleteAppointments = useAppStore((s) => s.deleteAppointments);
   const { setTheme } = useTheme();
   const [shareStatus, setShareStatus] = useState<string | null>(null);
+  const [importStatus, setImportStatus] = useState<string | null>(null);
+  const [isImporting, setIsImporting] = useState(false);
+  const importInputRef = useRef<HTMLInputElement>(null);
 
   // Multi-delete state
   const [manageMode, setManageMode] = useState(false);
@@ -122,35 +182,214 @@ export default function Settings() {
   }
 
   function handleDownloadCSV() {
-    const csv = buildCSV(appointments, clientContacts);
-    const blob = new Blob([csv], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `stylebook-${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+    const csv = buildAppointmentCSV(appointments, clientContacts);
+    downloadTextFile(
+      `stylebook-${new Date().toISOString().slice(0, 10)}.csv`,
+      csv,
+      "text/csv",
+    );
+  }
+
+  function handleDownloadFullBackup() {
+    const backup = buildFullBackup({
+      appointments,
+      services,
+      settings,
+      clientContacts,
+    });
+    downloadTextFile(
+      `stylebook-full-backup-${new Date().toISOString().slice(0, 10)}.json`,
+      JSON.stringify(backup, null, 2),
+      "application/json",
+    );
+  }
+
+  async function handleImportFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+
+    try {
+      const text = await file.text();
+      const parsed = parseBackupImport(text, file.name);
+      const message =
+        parsed.kind === "legacy-csv"
+          ? `Import ${parsed.appointments.length} CSV appointment(s)? This replaces current appointments but keeps your existing services/settings.`
+          : `Restore full backup with ${parsed.backup.data.appointments.length} appointment(s), ${parsed.backup.data.services.length} service(s), and settings? This replaces current app data.`;
+      if (!window.confirm(message)) return;
+      setIsImporting(true);
+      setImportStatus("Importing backup...");
+      const result = await applyBackupImport(parsed);
+      setImportStatus(result);
+    } catch (err) {
+      setImportStatus(
+        err instanceof Error
+          ? `Import failed: ${err.message}`
+          : "Import failed.",
+      );
+    } finally {
+      setIsImporting(false);
+      setTimeout(() => setImportStatus(null), 8000);
+    }
+  }
+
+  async function applyBackupImport(
+    parsed: ParsedBackupImport,
+  ): Promise<string> {
+    if (parsed.kind === "legacy-csv") {
+      return restoreLegacyCsv(parsed.appointments);
+    }
+    return restoreFullBackup(parsed.backup.data);
+  }
+
+  async function restoreLegacyCsv(rows: CsvAppointmentRow[]): Promise<string> {
+    await Promise.all(appointments.map((a) => api.deleteAppointment(a.id)));
+    setAppointments([]);
+
+    const nextServices = [...services];
+    const servicesByName = new Map(
+      nextServices.map((service) => [service.name.toLowerCase(), service]),
+    );
+
+    for (const row of rows) {
+      const key = row.serviceName.toLowerCase();
+      if (!servicesByName.has(key)) {
+        const created = await api.createService({
+          name: row.serviceName,
+          price: row.price,
+          color:
+            IMPORT_SERVICE_COLORS[
+              servicesByName.size % IMPORT_SERVICE_COLORS.length
+            ],
+          category: "single",
+          phases: [],
+          totalDurationMinutes: row.durationMinutes,
+        });
+        nextServices.push(created);
+        servicesByName.set(key, created);
+      }
+    }
+    setServices(nextServices);
+
+    const restored: Appointment[] = [];
+    for (const row of rows) {
+      const service = servicesByName.get(row.serviceName.toLowerCase());
+      if (!service) throw new Error(`Service not found: ${row.serviceName}`);
+      const servicePhaseTotal = service.phases.reduce(
+        (sum, phase) => sum + phase.durationMinutes,
+        0,
+      );
+      const phases =
+        servicePhaseTotal === row.durationMinutes
+          ? buildPhasesFromService(service, row.startTime)
+          : [];
+      const created = await api.createAppointment({
+        clientName: row.clientName,
+        serviceId: service.id,
+        serviceName: service.name,
+        date: row.date,
+        startTime: row.startTime,
+        durationMinutes: row.durationMinutes,
+        price: row.price,
+        phoneNumber: row.phone,
+        notes: row.notes,
+        phases,
+        color: service.color,
+      });
+      restored.push(created);
+    }
+    setAppointments(restored);
+    setClientContacts(buildClientContactsFromCsvRows(rows));
+    return `Imported ${restored.length} appointment(s) from CSV.`;
+  }
+
+  async function restoreFullBackup(data: StyleBookBackupData): Promise<string> {
+    await Promise.all(appointments.map((a) => api.deleteAppointment(a.id)));
+    setAppointments([]);
+
+    await Promise.all(services.map((service) => api.deleteService(service.id)));
+    const createdServices: Service[] = [];
+    const serviceIdMap = new Map<string, string>();
+
+    for (const service of data.services) {
+      const created = await api.createService({
+        name: service.name,
+        price: service.price,
+        color: service.color,
+        category: service.category,
+        phases: service.phases,
+        totalDurationMinutes: service.totalDurationMinutes,
+        finishingLabel: service.finishingLabel,
+      });
+      createdServices.push(created);
+      serviceIdMap.set(service.id, created.id);
+    }
+    setServices(createdServices);
+
+    const restoredAppointments: Appointment[] = [];
+    for (const appointment of data.appointments) {
+      const service =
+        createdServices.find(
+          (s) => s.id === serviceIdMap.get(appointment.serviceId),
+        ) ?? createdServices.find((s) => s.name === appointment.serviceName);
+      if (!service) {
+        throw new Error(`Service not found for ${appointment.clientName}.`);
+      }
+      const created = await api.createAppointment({
+        clientName: appointment.clientName,
+        serviceId: service.id,
+        serviceName: service.name,
+        date: appointment.date,
+        startTime: appointment.startTime,
+        durationMinutes: appointment.durationMinutes,
+        price: appointment.price,
+        phoneNumber: appointment.phoneNumber,
+        notes: appointment.notes,
+        phases: appointment.phases,
+        color: service.color,
+      });
+      restoredAppointments.push(created);
+    }
+
+    await api.updateSettings(data.settings);
+    setSettings(data.settings);
+    setTheme(data.settings.darkMode ? "dark" : "light");
+    setAppointments(restoredAppointments);
+    setClientContacts(data.clientContacts);
+    return `Restored ${restoredAppointments.length} appointment(s), ${createdServices.length} service(s), settings, and client contacts.`;
   }
 
   // Per-day working hours helpers
   function getDay(key: DayKey): WorkingDaySchedule {
-    return settings.workingDays?.[key] ?? {
-      enabled: key !== "sun" && key !== "sat",
-      start: settings.workingHoursStart,
-      end: settings.workingHoursEnd,
-    };
+    return (
+      settings.workingDays?.[key] ?? {
+        enabled: key !== "sun" && key !== "sat",
+        start: settings.workingHoursStart,
+        end: settings.workingHoursEnd,
+      }
+    );
   }
 
   async function toggleDayEnabled(key: DayKey) {
     const current = getDay(key);
     const updated = { ...getDay(key), enabled: !current.enabled };
-    const newDays = { ...(settings.workingDays ?? defaultWorkingDays()), [key]: updated };
+    const newDays = {
+      ...(settings.workingDays ?? defaultWorkingDays()),
+      [key]: updated,
+    };
     updateSettings({ workingDays: newDays });
   }
 
-  async function handleDayTimeChange(key: DayKey, field: "start" | "end", value: string) {
+  async function handleDayTimeChange(
+    key: DayKey,
+    field: "start" | "end",
+    value: string,
+  ) {
     const updated = { ...getDay(key), [field]: value };
-    const newDays = { ...(settings.workingDays ?? defaultWorkingDays()), [key]: updated };
+    const newDays = {
+      ...(settings.workingDays ?? defaultWorkingDays()),
+      [key]: updated,
+    };
     updateSettings({ workingDays: newDays });
   }
 
@@ -160,15 +399,23 @@ export default function Settings() {
     const updated = {
       ...current,
       biweekly: nowBiweekly,
-      biweeklyRef: nowBiweekly ? (current.biweeklyRef ?? "2026-06-07") : undefined,
+      biweeklyRef: nowBiweekly
+        ? (current.biweeklyRef ?? "2026-06-07")
+        : undefined,
     };
-    const newDays = { ...(settings.workingDays ?? defaultWorkingDays()), [key]: updated };
+    const newDays = {
+      ...(settings.workingDays ?? defaultWorkingDays()),
+      [key]: updated,
+    };
     updateSettings({ workingDays: newDays });
   }
 
   // Multi-delete
   const filteredAppts = [...appointments]
-    .sort((a, b) => b.date.localeCompare(a.date) || a.startTime.localeCompare(b.startTime))
+    .sort(
+      (a, b) =>
+        b.date.localeCompare(a.date) || a.startTime.localeCompare(b.startTime),
+    )
     .filter((a) => {
       if (!searchTerm.trim()) return true;
       const q = searchTerm.toLowerCase();
@@ -199,7 +446,9 @@ export default function Settings() {
   async function handleBulkDelete() {
     const ids = [...selected];
     deleteAppointments(ids);
-    await Promise.all(ids.map((id) => api.deleteAppointment(id).catch(console.error)));
+    await Promise.all(
+      ids.map((id) => api.deleteAppointment(id).catch(console.error)),
+    );
     setSelected(new Set());
     setDeleteConfirm(false);
     setManageMode(false);
@@ -233,13 +482,19 @@ export default function Settings() {
 
           {/* ── Working schedule section ── */}
           <div>
-            <SectionHeader icon={<Clock size={15} />} title="Working Schedule" />
+            <SectionHeader
+              icon={<Clock size={15} />}
+              title="Working Schedule"
+            />
             <div className="bg-card rounded-xl border border-border overflow-hidden shadow-sm">
               <div className="divide-y divide-border/60">
                 {DAY_KEYS.map((key) => {
                   const day = getDay(key);
                   return (
-                    <div key={key} className="px-4 py-2.5 flex items-center gap-3">
+                    <div
+                      key={key}
+                      className="px-4 py-2.5 flex items-center gap-3"
+                    >
                       {/* Enable toggle */}
                       <button
                         type="button"
@@ -251,7 +506,9 @@ export default function Settings() {
                         <Toggle checked={day.enabled} small />
                       </button>
                       {/* Day label */}
-                      <span className={`text-sm font-medium w-20 flex-shrink-0 ${day.enabled ? "text-foreground" : "text-muted-foreground"}`}>
+                      <span
+                        className={`text-sm font-medium w-20 flex-shrink-0 ${day.enabled ? "text-foreground" : "text-muted-foreground"}`}
+                      >
                         {DAY_LABELS[key]}
                       </span>
                       {/* Time pickers */}
@@ -261,16 +518,26 @@ export default function Settings() {
                             <input
                               type="time"
                               value={day.start}
-                              onChange={(e) => handleDayTimeChange(key, "start", e.target.value)}
+                              onChange={(e) =>
+                                handleDayTimeChange(
+                                  key,
+                                  "start",
+                                  e.target.value,
+                                )
+                              }
                               className="text-xs border border-input rounded-lg px-2 py-1 bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-accent/50 focus:border-accent transition-colors flex-1 min-w-0"
                               style={{ fontSize: "14px" }}
                               data-ocid={`settings.day_${key}_start`}
                             />
-                            <span className="text-xs text-muted-foreground flex-shrink-0">–</span>
+                            <span className="text-xs text-muted-foreground flex-shrink-0">
+                              –
+                            </span>
                             <input
                               type="time"
                               value={day.end}
-                              onChange={(e) => handleDayTimeChange(key, "end", e.target.value)}
+                              onChange={(e) =>
+                                handleDayTimeChange(key, "end", e.target.value)
+                              }
                               className="text-xs border border-input rounded-lg px-2 py-1 bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-accent/50 focus:border-accent transition-colors flex-1 min-w-0"
                               style={{ fontSize: "14px" }}
                               data-ocid={`settings.day_${key}_end`}
@@ -286,13 +553,22 @@ export default function Settings() {
                           </button>
                           {day.biweekly && (
                             <div className="flex items-center gap-2 mt-0.5">
-                              <span className="text-[10px] text-muted-foreground flex-shrink-0">Reference date (a working week):</span>
+                              <span className="text-[10px] text-muted-foreground flex-shrink-0">
+                                Reference date (a working week):
+                              </span>
                               <input
                                 type="date"
                                 value={day.biweeklyRef ?? ""}
                                 onChange={(e) => {
-                                  const updated = { ...day, biweeklyRef: e.target.value };
-                                  const newDays = { ...(settings.workingDays ?? defaultWorkingDays()), [key]: updated };
+                                  const updated = {
+                                    ...day,
+                                    biweeklyRef: e.target.value,
+                                  };
+                                  const newDays = {
+                                    ...(settings.workingDays ??
+                                      defaultWorkingDays()),
+                                    [key]: updated,
+                                  };
                                   updateSettings({ workingDays: newDays });
                                 }}
                                 className="text-[11px] border border-input rounded px-1.5 py-0.5 bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-accent/50"
@@ -302,7 +578,9 @@ export default function Settings() {
                           )}
                         </div>
                       ) : (
-                        <span className="text-xs text-muted-foreground">Off</span>
+                        <span className="text-xs text-muted-foreground">
+                          Off
+                        </span>
                       )}
                     </div>
                   );
@@ -311,7 +589,9 @@ export default function Settings() {
               {/* Calendar grid range note */}
               <div className="border-t border-border px-4 py-2.5">
                 <p className="text-[11px] text-muted-foreground">
-                  The calendar grid automatically expands to show all working hours. The range below sets the minimum visible range — the grid widens if any working day falls outside it.
+                  The calendar grid automatically expands to show all working
+                  hours. The range below sets the minimum visible range — the
+                  grid widens if any working day falls outside it.
                 </p>
               </div>
               {/* Global range (still needed for calendar grid) */}
@@ -380,7 +660,9 @@ export default function Settings() {
           <div>
             <div className="flex items-center justify-between px-1 mb-2">
               <div className="flex items-center gap-1.5">
-                <span className="text-muted-foreground"><Trash2 size={15} /></span>
+                <span className="text-muted-foreground">
+                  <Trash2 size={15} />
+                </span>
                 <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                   Manage Appointments
                 </h2>
@@ -389,7 +671,11 @@ export default function Settings() {
                 <button
                   type="button"
                   className="text-xs text-muted-foreground hover:text-foreground"
-                  onClick={() => { setManageMode(false); setSelected(new Set()); setSearchTerm(""); }}
+                  onClick={() => {
+                    setManageMode(false);
+                    setSelected(new Set());
+                    setSearchTerm("");
+                  }}
                 >
                   Cancel
                 </button>
@@ -421,14 +707,19 @@ export default function Settings() {
                     className="text-xs font-medium text-accent flex-shrink-0"
                     onClick={toggleSelectAll}
                   >
-                    {selected.size === filteredAppts.length && filteredAppts.length > 0 ? "Deselect all" : "Select all"}
+                    {selected.size === filteredAppts.length &&
+                    filteredAppts.length > 0
+                      ? "Deselect all"
+                      : "Select all"}
                   </button>
                 </div>
 
                 {/* Appointment list */}
                 <div className="max-h-72 overflow-auto divide-y divide-border/50">
                   {filteredAppts.length === 0 ? (
-                    <p className="text-sm text-muted-foreground text-center py-6">No appointments found</p>
+                    <p className="text-sm text-muted-foreground text-center py-6">
+                      No appointments found
+                    </p>
                   ) : (
                     filteredAppts.map((appt) => (
                       <button
@@ -445,8 +736,19 @@ export default function Settings() {
                           }`}
                         >
                           {selected.has(appt.id) && (
-                            <svg viewBox="0 0 10 8" className="w-2.5 h-2 fill-accent-foreground" aria-hidden="true">
-                              <path d="M1 4l3 3 5-6" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+                            <svg
+                              viewBox="0 0 10 8"
+                              className="w-2.5 h-2 fill-accent-foreground"
+                              aria-hidden="true"
+                            >
+                              <path
+                                d="M1 4l3 3 5-6"
+                                stroke="currentColor"
+                                strokeWidth="1.5"
+                                fill="none"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              />
                             </svg>
                           )}
                         </div>
@@ -455,12 +757,23 @@ export default function Settings() {
                           style={{ backgroundColor: appt.color }}
                         />
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium truncate">{appt.clientName}</p>
-                          <p className="text-xs text-muted-foreground truncate">{appt.serviceName}</p>
+                          <p className="text-sm font-medium truncate">
+                            {appt.clientName}
+                          </p>
+                          <p className="text-xs text-muted-foreground truncate">
+                            {appt.serviceName}
+                          </p>
                         </div>
                         <div className="text-right flex-shrink-0">
-                          <p className="text-xs text-muted-foreground">{formatDate(appt.date, { month: "short", day: "numeric" })}</p>
-                          <p className="text-xs text-muted-foreground">{formatTime12(appt.startTime)}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {formatDate(appt.date, {
+                              month: "short",
+                              day: "numeric",
+                            })}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {formatTime12(appt.startTime)}
+                          </p>
                         </div>
                       </button>
                     ))
@@ -472,7 +785,10 @@ export default function Settings() {
                   <div className="border-t border-border p-3">
                     {deleteConfirm ? (
                       <div className="flex items-center gap-2">
-                        <p className="text-sm text-destructive flex-1">Delete {selected.size} appointment{selected.size !== 1 ? "s" : ""}?</p>
+                        <p className="text-sm text-destructive flex-1">
+                          Delete {selected.size} appointment
+                          {selected.size !== 1 ? "s" : ""}?
+                        </p>
                         <button
                           type="button"
                           className="px-3 py-1.5 bg-destructive text-destructive-foreground rounded-lg text-xs font-medium"
@@ -507,8 +823,55 @@ export default function Settings() {
 
           {/* ── Data & Backup section ── */}
           <div>
-            <SectionHeader icon={<Download size={15} />} title="Data & Backup" />
+            <SectionHeader
+              icon={<Download size={15} />}
+              title="Data & Backup"
+            />
             <div className="bg-card rounded-xl border border-border overflow-hidden shadow-sm flex flex-col divide-y divide-border">
+              <button
+                type="button"
+                onClick={handleDownloadFullBackup}
+                className="flex items-center gap-3 px-4 py-3.5 text-left hover:bg-muted/50 transition-colors"
+                data-ocid="settings.download_full_backup_button"
+              >
+                <span className="flex items-center justify-center w-8 h-8 rounded-lg bg-accent/10 text-accent flex-shrink-0">
+                  <DatabaseBackup size={16} />
+                </span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium">Export Full Backup</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Saves appointments, services, phases, settings, and clients
+                  </p>
+                </div>
+              </button>
+              <button
+                type="button"
+                onClick={() => importInputRef.current?.click()}
+                disabled={isImporting}
+                className="flex items-center gap-3 px-4 py-3.5 text-left hover:bg-muted/50 transition-colors disabled:opacity-60"
+                data-ocid="settings.import_backup_button"
+              >
+                <span className="flex items-center justify-center w-8 h-8 rounded-lg bg-accent/10 text-accent flex-shrink-0">
+                  <Upload size={16} />
+                </span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium">Import Backup</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Restores full JSON backups or legacy appointment CSV files
+                  </p>
+                  {importStatus && (
+                    <p className="text-xs text-accent mt-1">{importStatus}</p>
+                  )}
+                </div>
+              </button>
+              <input
+                ref={importInputRef}
+                type="file"
+                accept=".json,.csv,application/json,text/csv"
+                onChange={handleImportFile}
+                className="hidden"
+                data-ocid="settings.import_backup_input"
+              />
               <button
                 type="button"
                 onClick={handleShareBackup}
@@ -537,7 +900,9 @@ export default function Settings() {
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium">Export CSV</p>
                   <p className="text-xs text-muted-foreground mt-0.5">
-                    {appointments.length} appointment{appointments.length !== 1 ? "s" : ""} · opens in Excel/Sheets
+                    {appointments.length} appointment
+                    {appointments.length !== 1 ? "s" : ""} · opens in
+                    Excel/Sheets
                   </p>
                 </div>
               </button>
@@ -559,12 +924,18 @@ export default function Settings() {
 function defaultWorkingDays() {
   return {
     sun: { enabled: false, start: "09:00", end: "13:00" },
-    mon: { enabled: true,  start: "07:00", end: "10:00" },
+    mon: { enabled: true, start: "07:00", end: "10:00" },
     tue: { enabled: false, start: "07:00", end: "10:00" },
-    wed: { enabled: true,  start: "16:00", end: "19:00" },
+    wed: { enabled: true, start: "16:00", end: "19:00" },
     thu: { enabled: false, start: "07:00", end: "10:00" },
-    fri: { enabled: true,  start: "07:00", end: "10:00" },
-    sat: { enabled: true,  start: "09:00", end: "13:00", biweekly: true, biweeklyRef: "2026-06-07" },
+    fri: { enabled: true, start: "07:00", end: "10:00" },
+    sat: {
+      enabled: true,
+      start: "09:00",
+      end: "13:00",
+      biweekly: true,
+      biweeklyRef: "2026-06-07",
+    },
   };
 }
 
