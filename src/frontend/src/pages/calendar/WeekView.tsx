@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useShallow } from "zustand/shallow";
 import * as api from "../../lib/api";
+import { validateAppointmentChange } from "../../lib/appointmentValidation";
 import {
   dateToString,
   formatDuration,
@@ -201,9 +202,13 @@ export function WeekView({
 
   const [dropConfirm, setDropConfirm] = useState<{
     appt: Appointment;
+    updated: Appointment;
+    previous: Appointment;
+    actionLabel: string;
     newTime: string;
     newDate: string;
     outsideHours?: string;
+    overlap?: { message: string; isProcessing: boolean };
   } | null>(null);
 
   useEffect(() => {
@@ -559,15 +564,27 @@ export function WeekView({
         draft.durationMinutes === previous.durationMinutes)
     )
       return;
-    void persistAppointmentUpdate(
-      {
-        ...previous,
-        startTime: draft.startTime,
-        durationMinutes: draft.durationMinutes,
-        updatedAt: new Date().toISOString(),
-      },
-      previous,
+    const updated: Appointment = {
+      ...previous,
+      startTime: draft.startTime,
+      durationMinutes: draft.durationMinutes,
+      updatedAt: new Date().toISOString(),
+    };
+    const validation = validateAppointmentChange(
+      updated,
+      allAppointments,
+      settings,
     );
+    setDropConfirm({
+      appt: previous,
+      updated,
+      previous,
+      actionLabel: "Resize appointment?",
+      newTime: draft.startTime,
+      newDate: dateStr,
+      outsideHours: validation.outsideHours,
+      overlap: validation.overlap,
+    });
   }
 
   function handleResizePointerCancel() {
@@ -740,7 +757,8 @@ export function WeekView({
         }
         if (hasConflict) break;
       }
-      if (hasConflict) return;
+      // Active conflicts are no longer silently blocked; the shared confirmation
+      // dialog warns before saving so resize/drag/modal behavior stays aligned.
       const schedule = getWorkingScheduleForDate(targetDate, settings);
       let outsideHours: string | undefined;
       if (!schedule.enabled) {
@@ -754,11 +772,31 @@ export function WeekView({
           outsideHours = `Outside working hours (${formatTime12(schedule.start)}–${formatTime12(schedule.end)}).`;
         }
       }
+      const newPhases =
+        block.appt.phases.length > 0
+          ? recalcPhaseStarts(block.appt.phases, newTime)
+          : block.appt.phases;
+      const updated: Appointment = {
+        ...block.appt,
+        date: targetDate,
+        startTime: newTime,
+        phases: newPhases,
+        updatedAt: new Date().toISOString(),
+      };
+      const validation = validateAppointmentChange(
+        updated,
+        allAppointments,
+        settings,
+      );
       setDropConfirm({
         appt: block.appt,
+        updated,
+        previous: block.appt,
+        actionLabel: "Move appointment?",
         newTime,
         newDate: targetDate,
-        outsideHours,
+        outsideHours: validation.outsideHours ?? outsideHours,
+        overlap: validation.overlap,
       });
     }
   }
@@ -772,20 +810,9 @@ export function WeekView({
 
   async function confirmDrop() {
     if (!dropConfirm) return;
-    const { appt, newTime, newDate } = dropConfirm;
-    const newPhases =
-      appt.phases.length > 0
-        ? recalcPhaseStarts(appt.phases, newTime)
-        : appt.phases;
-    const updated: Appointment = {
-      ...appt,
-      date: newDate,
-      startTime: newTime,
-      phases: newPhases,
-      updatedAt: new Date().toISOString(),
-    };
+    const { updated, previous } = dropConfirm;
     setDropConfirm(null);
-    await persistAppointmentUpdate(updated, appt);
+    await persistAppointmentUpdate(updated, previous);
   }
 
   function buildBlocks(dateStr: string): RenderBlock[] {
@@ -1282,7 +1309,9 @@ export function WeekView({
       {dropConfirm && (
         <div className="fixed inset-0 z-[65] flex items-center justify-center bg-foreground/40 backdrop-blur-sm">
           <div className="bg-card rounded-2xl shadow-2xl p-5 mx-4 max-w-sm w-full">
-            <p className="text-sm font-semibold mb-1">Move appointment?</p>
+            <p className="text-sm font-semibold mb-1">
+              {dropConfirm.actionLabel}
+            </p>
             <p className="text-sm text-muted-foreground mb-2">
               Move{" "}
               <span className="font-medium text-foreground">
@@ -1304,6 +1333,17 @@ export function WeekView({
             {dropConfirm.outsideHours && (
               <p className="text-xs text-amber-600 dark:text-amber-400 mb-3">
                 ⚠ {dropConfirm.outsideHours}
+              </p>
+            )}
+            {dropConfirm.overlap && (
+              <p
+                className={`text-xs mb-3 ${
+                  dropConfirm.overlap.isProcessing
+                    ? "text-amber-600 dark:text-amber-400"
+                    : "text-destructive"
+                }`}
+              >
+                ⚠ {dropConfirm.overlap.message}
               </p>
             )}
             <div className="flex gap-2">

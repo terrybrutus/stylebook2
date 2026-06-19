@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useShallow } from "zustand/shallow";
+import * as api from "../../lib/api";
+import { validateAppointmentChange } from "../../lib/appointmentValidation";
 import {
   durationToPixels,
   formatDuration,
@@ -13,18 +15,24 @@ import {
   hueRotate,
   timeToPixels,
 } from "../../lib/utils";
-import * as api from "../../lib/api";
 import { useAppStore } from "../../store/useAppStore";
-import type { Appointment, AppointmentModalState, PhaseInstance } from "../../types";
+import type {
+  Appointment,
+  AppointmentModalState,
+  PhaseInstance,
+} from "../../types";
 
 const HOUR_PX = 60;
 
-function recalcPhaseStarts(phases: PhaseInstance[], baseStart: string): PhaseInstance[] {
-  const [sh, sm] = baseStart.split(':').map(Number);
+function recalcPhaseStarts(
+  phases: PhaseInstance[],
+  baseStart: string,
+): PhaseInstance[] {
+  const [sh, sm] = baseStart.split(":").map(Number);
   let cursor = sh * 60 + sm;
   return phases.map((p) => {
-    const hh = String(Math.floor(cursor / 60)).padStart(2, '0');
-    const mm = String(cursor % 60).padStart(2, '00');
+    const hh = String(Math.floor(cursor / 60)).padStart(2, "0");
+    const mm = String(cursor % 60).padStart(2, "00");
     cursor += p.durationMinutes;
     return { ...p, startTime: `${hh}:${mm}` };
   });
@@ -91,14 +99,15 @@ type RenderBlock = {
 type ResizeEdge = "top" | "bottom";
 
 export function DayView({ date, onModalChange }: Props) {
-  const { settings, allAppointments, deleteAppointment, updateAppointment } = useAppStore(
-    useShallow((s) => ({
-      settings: s.settings,
-      allAppointments: s.appointments,
-      deleteAppointment: s.deleteAppointment,
-      updateAppointment: s.updateAppointment,
-    })),
-  );
+  const { settings, allAppointments, deleteAppointment, updateAppointment } =
+    useAppStore(
+      useShallow((s) => ({
+        settings: s.settings,
+        allAppointments: s.appointments,
+        deleteAppointment: s.deleteAppointment,
+        updateAppointment: s.updateAppointment,
+      })),
+    );
   // Filter outside selector — filter() creates a new array reference every call,
   // which causes React #185 (useSyncExternalStore stale snapshot loop) if inside useShallow
   const appointments = useMemo(
@@ -111,7 +120,9 @@ export function DayView({ date, onModalChange }: Props) {
   const totalPx = (endHour - startHour) * HOUR_PX;
 
   const _now = new Date();
-  const isToday = date === `${_now.getFullYear()}-${String(_now.getMonth() + 1).padStart(2, "0")}-${String(_now.getDate()).padStart(2, "0")}`;
+  const isToday =
+    date ===
+    `${_now.getFullYear()}-${String(_now.getMonth() + 1).padStart(2, "0")}-${String(_now.getDate()).padStart(2, "0")}`;
   const [currentTimePx, setCurrentTimePx] = useState(() =>
     getCurrentTimePixels(startHour),
   );
@@ -130,9 +141,24 @@ export function DayView({ date, onModalChange }: Props) {
     pointerId: number;
     pointerTarget: Element;
   } | null>(null);
-  const [dragGhost, setDragGhost] = useState<{ topPx: number; time: string } | null>(null);
-  const [resizeGhost, setResizeGhost] = useState<{ topPx: number; heightPx: number; label: string } | null>(null);
-  const [dropConfirm, setDropConfirm] = useState<{ appt: Appointment; newTime: string; outsideHours?: string } | null>(null);
+  const [dragGhost, setDragGhost] = useState<{
+    topPx: number;
+    time: string;
+  } | null>(null);
+  const [resizeGhost, setResizeGhost] = useState<{
+    topPx: number;
+    heightPx: number;
+    label: string;
+  } | null>(null);
+  const [dropConfirm, setDropConfirm] = useState<{
+    appt: Appointment;
+    updated: Appointment;
+    previous: Appointment;
+    actionLabel: string;
+    newTime: string;
+    outsideHours?: string;
+    overlap?: { message: string; isProcessing: boolean };
+  } | null>(null);
   const activeResizeRef = useRef<{
     block: RenderBlock;
     edge: ResizeEdge;
@@ -194,7 +220,7 @@ export function DayView({ date, onModalChange }: Props) {
   function minutesToTimeStr(totalMin: number): string {
     const h = Math.floor(totalMin / 60);
     const m = totalMin % 60;
-    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '00')}`;
+    return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "00")}`;
   }
 
   function timeStrToMinutes(time: string): number {
@@ -202,7 +228,10 @@ export function DayView({ date, onModalChange }: Props) {
     return h * 60 + m;
   }
 
-  async function persistAppointmentUpdate(updated: Appointment, previous: Appointment) {
+  async function persistAppointmentUpdate(
+    updated: Appointment,
+    previous: Appointment,
+  ) {
     updateAppointment(updated);
     try {
       await api.updateAppointment(updated.id, {
@@ -224,7 +253,11 @@ export function DayView({ date, onModalChange }: Props) {
     }
   }
 
-  function getResizeDraft(block: RenderBlock, edge: ResizeEdge, clientY: number) {
+  function getResizeDraft(
+    block: RenderBlock,
+    edge: ResizeEdge,
+    clientY: number,
+  ) {
     const start = timeStrToMinutes(block.appt.startTime);
     const end = start + block.appt.durationMinutes;
     const snapped = getSnappedMinutes(clientY, 0);
@@ -246,13 +279,27 @@ export function DayView({ date, onModalChange }: Props) {
     };
   }
 
-  function handleResizePointerDown(e: React.PointerEvent, block: RenderBlock, edge: ResizeEdge) {
-    if (e.pointerType !== "mouse" || block.isProcessing || block.appt.phases.length > 0) return;
+  function handleResizePointerDown(
+    e: React.PointerEvent,
+    block: RenderBlock,
+    edge: ResizeEdge,
+  ) {
+    if (
+      e.pointerType !== "mouse" ||
+      block.isProcessing ||
+      block.appt.phases.length > 0
+    )
+      return;
     e.preventDefault();
     e.stopPropagation();
     const target = e.currentTarget as Element;
     target.setPointerCapture(e.pointerId);
-    activeResizeRef.current = { block, edge, pointerId: e.pointerId, pointerTarget: target };
+    activeResizeRef.current = {
+      block,
+      edge,
+      pointerId: e.pointerId,
+      pointerTarget: target,
+    };
   }
 
   function handleResizePointerMove(e: React.PointerEvent) {
@@ -277,16 +324,31 @@ export function DayView({ date, onModalChange }: Props) {
     const previous = resize.block.appt;
     activeResizeRef.current = null;
     setResizeGhost(null);
-    if (draft.startTime === previous.startTime && draft.durationMinutes === previous.durationMinutes) return;
-    void persistAppointmentUpdate(
-      {
-        ...previous,
-        startTime: draft.startTime,
-        durationMinutes: draft.durationMinutes,
-        updatedAt: new Date().toISOString(),
-      },
-      previous,
+    if (
+      draft.startTime === previous.startTime &&
+      draft.durationMinutes === previous.durationMinutes
+    )
+      return;
+    const updated: Appointment = {
+      ...previous,
+      startTime: draft.startTime,
+      durationMinutes: draft.durationMinutes,
+      updatedAt: new Date().toISOString(),
+    };
+    const validation = validateAppointmentChange(
+      updated,
+      allAppointments,
+      settings,
     );
+    setDropConfirm({
+      appt: previous,
+      updated,
+      previous,
+      actionLabel: "Resize appointment?",
+      newTime: draft.startTime,
+      outsideHours: validation.outsideHours,
+      overlap: validation.overlap,
+    });
   }
 
   function handleResizePointerCancel() {
@@ -316,7 +378,17 @@ export function DayView({ date, onModalChange }: Props) {
         setContextMenu({ x: e.clientX, y: e.clientY, appointment: block.appt });
       }
     }, 300);
-    activeDragRef.current = { block, offsetMinutes, started: false, startClientY: e.clientY, longPressTimer, isTouch, dragArmed: !isTouch, pointerId: e.pointerId, pointerTarget: target };
+    activeDragRef.current = {
+      block,
+      offsetMinutes,
+      started: false,
+      startClientY: e.clientY,
+      longPressTimer,
+      isTouch,
+      dragArmed: !isTouch,
+      pointerId: e.pointerId,
+      pointerTarget: target,
+    };
   }
 
   function handleBlockPointerMove(e: React.PointerEvent) {
@@ -349,23 +421,32 @@ export function DayView({ date, onModalChange }: Props) {
     activeDragRef.current = null;
     setDragGhost(null);
     if (!drag?.started) {
-      onModalChange({ isOpen: true, mode: 'edit', appointment: block.appt });
+      onModalChange({ isOpen: true, mode: "edit", appointment: block.appt });
       return;
     }
     const totalMin = getSnappedMinutes(e.clientY, drag.offsetMinutes);
     const newTime = minutesToTimeStr(totalMin);
     if (newTime !== block.appt.startTime) {
-      const toMin = (t: string) => { const [h, m] = t.split(":").map(Number); return h * 60 + m; };
+      const toMin = (t: string) => {
+        const [h, m] = t.split(":").map(Number);
+        return h * 60 + m;
+      };
       // Check active-vs-active overlap — prevent drop if it conflicts with another appt's active phases
       const newStartMin = toMin(newTime);
       const newActiveBlocks: { start: number; end: number }[] = [];
       if (block.appt.phases.length === 0) {
-        newActiveBlocks.push({ start: newStartMin, end: newStartMin + block.appt.durationMinutes });
+        newActiveBlocks.push({
+          start: newStartMin,
+          end: newStartMin + block.appt.durationMinutes,
+        });
       } else {
         let cursor = newStartMin;
         for (const p of block.appt.phases) {
           if (p.phaseType === "active") {
-            newActiveBlocks.push({ start: cursor, end: cursor + p.durationMinutes });
+            newActiveBlocks.push({
+              start: cursor,
+              end: cursor + p.durationMinutes,
+            });
           }
           cursor += p.durationMinutes;
         }
@@ -376,55 +457,92 @@ export function DayView({ date, onModalChange }: Props) {
         const existingActiveBlocks: { start: number; end: number }[] = [];
         if (existing.phases.length === 0) {
           const s = toMin(existing.startTime);
-          existingActiveBlocks.push({ start: s, end: s + existing.durationMinutes });
+          existingActiveBlocks.push({
+            start: s,
+            end: s + existing.durationMinutes,
+          });
         } else {
           for (const p of existing.phases) {
             if (p.phaseType === "active") {
-              const tp = p.startTime.includes("T") ? p.startTime.split("T")[1].slice(0, 5) : p.startTime;
+              const tp = p.startTime.includes("T")
+                ? p.startTime.split("T")[1].slice(0, 5)
+                : p.startTime;
               const s = toMin(tp);
-              existingActiveBlocks.push({ start: s, end: s + p.durationMinutes });
+              existingActiveBlocks.push({
+                start: s,
+                end: s + p.durationMinutes,
+              });
             }
           }
         }
         for (const na of newActiveBlocks) {
           for (const ea of existingActiveBlocks) {
-            if (na.start < ea.end && na.end > ea.start) { hasConflict = true; break; }
+            if (na.start < ea.end && na.end > ea.start) {
+              hasConflict = true;
+              break;
+            }
           }
           if (hasConflict) break;
         }
         if (hasConflict) break;
       }
-      if (hasConflict) return; // silently prevent — active blocks can't overlap
+      // Active conflicts are no longer silently blocked; the shared confirmation
+      // dialog warns before saving so resize/drag/modal behavior stays aligned.
       const schedule = getWorkingScheduleForDate(date, settings);
       let outsideHours: string | undefined;
       if (!schedule.enabled) {
         outsideHours = "This day is not in your working schedule.";
       } else {
         const apptEnd = toMin(newTime) + block.appt.durationMinutes;
-        if (toMin(newTime) < toMin(schedule.start) || apptEnd > toMin(schedule.end)) {
+        if (
+          toMin(newTime) < toMin(schedule.start) ||
+          apptEnd > toMin(schedule.end)
+        ) {
           outsideHours = `Outside working hours (${formatTime12(schedule.start)}–${formatTime12(schedule.end)}).`;
         }
       }
-      setDropConfirm({ appt: block.appt, newTime, outsideHours });
+      const newPhases =
+        block.appt.phases.length > 0
+          ? recalcPhaseStarts(block.appt.phases, newTime)
+          : block.appt.phases;
+      const updated: Appointment = {
+        ...block.appt,
+        startTime: newTime,
+        phases: newPhases,
+        updatedAt: new Date().toISOString(),
+      };
+      const validation = validateAppointmentChange(
+        updated,
+        allAppointments,
+        settings,
+      );
+      setDropConfirm({
+        appt: block.appt,
+        updated,
+        previous: block.appt,
+        actionLabel: "Move appointment?",
+        newTime,
+        outsideHours: validation.outsideHours ?? outsideHours,
+        overlap: validation.overlap,
+      });
     }
   }
 
   function handleBlockPointerCancel() {
-    if (activeDragRef.current?.longPressTimer) clearTimeout(activeDragRef.current.longPressTimer);
+    if (activeDragRef.current?.longPressTimer)
+      clearTimeout(activeDragRef.current.longPressTimer);
     activeDragRef.current = null;
     setDragGhost(null);
   }
 
   async function confirmDrop() {
     if (!dropConfirm) return;
-    const { appt, newTime } = dropConfirm;
-    const newPhases = appt.phases.length > 0 ? recalcPhaseStarts(appt.phases, newTime) : appt.phases;
-    const updated: Appointment = { ...appt, startTime: newTime, phases: newPhases, updatedAt: new Date().toISOString() };
+    const { updated, previous } = dropConfirm;
     setDropConfirm(null);
-    await persistAppointmentUpdate(updated, appt);
+    await persistAppointmentUpdate(updated, previous);
   }
 
-  const rawBlocks: Omit<RenderBlock, 'leftPct' | 'zIdx'>[] = [];
+  const rawBlocks: Omit<RenderBlock, "leftPct" | "zIdx">[] = [];
   for (const appt of appointments) {
     if (appt.phases.length === 0) {
       const top = timeToPixels(appt.startTime, startHour);
@@ -460,11 +578,12 @@ export function DayView({ date, onModalChange }: Props) {
   const overlapOrder: number[] = rawBlocks.map(() => 0);
   for (let i = 0; i < rawBlocks.length; i++) {
     for (let j = i + 1; j < rawBlocks.length; j++) {
-      if (rawBlocks[j].topPx >= rawBlocks[i].topPx + rawBlocks[i].heightPx) break;
+      if (rawBlocks[j].topPx >= rawBlocks[i].topPx + rawBlocks[i].heightPx)
+        break;
       overlapOrder[j] = Math.max(overlapOrder[j], overlapOrder[i] + 1);
     }
   }
-  const cascadeOffsets = ['0%', '20%', '40%'];
+  const cascadeOffsets = ["0%", "20%", "40%"];
   // Assign visually distinct colors based on overlap order, rotating hue from
   // the block's base (service) color. 120° steps give maximum separation.
   const HUE_OFFSETS = [0, 120, 240, 60, 180, 300];
@@ -484,11 +603,24 @@ export function DayView({ date, onModalChange }: Props) {
     // Use the appointment's first-block order for both color AND position,
     // so all phases of the same appointment align in the same column.
     const apptOrder = Math.min(apptColorOrder.get(b.appt.id) ?? 0, 2);
-    return { ...b, color: displayColors[i], leftPct: cascadeOffsets[apptOrder], zIdx: (b.isProcessing ? 5 : 10) + apptOrder };
+    return {
+      ...b,
+      color: displayColors[i],
+      leftPct: cascadeOffsets[apptOrder],
+      zIdx: (b.isProcessing ? 5 : 10) + apptOrder,
+    };
   });
 
   return (
-    <div className="flex w-full" ref={containerRef} style={{ minHeight: totalPx, touchAction: 'pan-y', overscrollBehavior: 'none' }}>
+    <div
+      className="flex w-full"
+      ref={containerRef}
+      style={{
+        minHeight: totalPx,
+        touchAction: "pan-y",
+        overscrollBehavior: "none",
+      }}
+    >
       {/* Time labels column */}
       <div
         className="w-14 flex-shrink-0 bg-background border-r border-border relative"
@@ -532,9 +664,17 @@ export function DayView({ date, onModalChange }: Props) {
         {/* Non-working hours overlay */}
         {(() => {
           const sched = getWorkingScheduleForDate(date, settings);
-          const toMin = (t: string) => { const [h, m] = t.split(":").map(Number); return h * 60 + m; };
+          const toMin = (t: string) => {
+            const [h, m] = t.split(":").map(Number);
+            return h * 60 + m;
+          };
           if (!sched.enabled) {
-            return <div className="absolute inset-0 pointer-events-none z-[2]" style={{ backgroundColor: "rgba(0,0,0,0.18)" }} />;
+            return (
+              <div
+                className="absolute inset-0 pointer-events-none z-[2]"
+                style={{ backgroundColor: "rgba(0,0,0,0.18)" }}
+              />
+            );
           }
           const globalStart = startHour * 60;
           const globalEnd = endHour * 60;
@@ -545,13 +685,20 @@ export function DayView({ date, onModalChange }: Props) {
               {dayStart > globalStart && (
                 <div
                   className="absolute left-0 right-0 top-0 pointer-events-none z-[2]"
-                  style={{ height: ((dayStart - globalStart) / 60) * HOUR_PX, backgroundColor: "rgba(0,0,0,0.12)" }}
+                  style={{
+                    height: ((dayStart - globalStart) / 60) * HOUR_PX,
+                    backgroundColor: "rgba(0,0,0,0.12)",
+                  }}
                 />
               )}
               {dayEnd < globalEnd && (
                 <div
                   className="absolute left-0 right-0 pointer-events-none z-[2]"
-                  style={{ top: ((dayEnd - globalStart) / 60) * HOUR_PX, bottom: 0, backgroundColor: "rgba(0,0,0,0.12)" }}
+                  style={{
+                    top: ((dayEnd - globalStart) / 60) * HOUR_PX,
+                    bottom: 0,
+                    backgroundColor: "rgba(0,0,0,0.12)",
+                  }}
                 />
               )}
             </>
@@ -582,7 +729,9 @@ export function DayView({ date, onModalChange }: Props) {
               style={{ top, height: 30, zIndex: 1 }}
               role="button"
               tabIndex={0}
-              onClick={(e) => { if (e.button === 0) handleSlotClick(slot); }}
+              onClick={(e) => {
+                if (e.button === 0) handleSlotClick(slot);
+              }}
               onContextMenu={(e) => e.preventDefault()}
               onKeyDown={(e) => {
                 if (e.key === "Enter" || e.key === " ") handleSlotClick(slot);
@@ -598,7 +747,10 @@ export function DayView({ date, onModalChange }: Props) {
             block={block}
             leftPct={block.leftPct}
             zIdx={block.zIdx}
-            isDragging={dragGhost !== null && activeDragRef.current?.block.appt.id === block.appt.id}
+            isDragging={
+              dragGhost !== null &&
+              activeDragRef.current?.block.appt.id === block.appt.id
+            }
             onBlockPointerDown={handleBlockPointerDown}
             onBlockPointerMove={handleBlockPointerMove}
             onBlockPointerUp={handleBlockPointerUp}
@@ -621,11 +773,16 @@ export function DayView({ date, onModalChange }: Props) {
               left: `calc(${activeDragRef.current.block.leftPct} + 4px)`,
               zIndex: 50,
               borderColor: activeDragRef.current.block.color,
-              backgroundColor: hexToRgba(activeDragRef.current.block.color, 0.3),
+              backgroundColor: hexToRgba(
+                activeDragRef.current.block.color,
+                0.3,
+              ),
             }}
           >
             <div className="px-1.5 py-0.5">
-              <span className="text-[10px] font-bold">{formatTime12(dragGhost.time)}</span>
+              <span className="text-[10px] font-bold">
+                {formatTime12(dragGhost.time)}
+              </span>
             </div>
           </div>
         )}
@@ -714,13 +871,31 @@ export function DayView({ date, onModalChange }: Props) {
       {dropConfirm && (
         <div className="fixed inset-0 z-[65] flex items-center justify-center bg-foreground/40 backdrop-blur-sm">
           <div className="bg-card rounded-2xl shadow-2xl p-5 mx-4 max-w-sm w-full">
-            <p className="text-sm font-semibold mb-1">Move appointment?</p>
+            <p className="text-sm font-semibold mb-1">
+              {dropConfirm.actionLabel}
+            </p>
             <p className="text-sm text-muted-foreground mb-2">
-              Move <span className="font-medium text-foreground">{dropConfirm.appt.clientName}</span> to{' '}
-              <span className="font-medium text-accent">{formatTime12(dropConfirm.newTime)}</span>?
+              Move{" "}
+              <span className="font-medium text-foreground">
+                {dropConfirm.appt.clientName}
+              </span>{" "}
+              to{" "}
+              <span className="font-medium text-accent">
+                {formatTime12(dropConfirm.newTime)}
+              </span>
+              ?
             </p>
             {dropConfirm.outsideHours && (
-              <p className="text-xs text-amber-600 dark:text-amber-400 mb-3">⚠ {dropConfirm.outsideHours}</p>
+              <p className="text-xs text-amber-600 dark:text-amber-400 mb-3">
+                ⚠ {dropConfirm.outsideHours}
+              </p>
+            )}
+            {dropConfirm.overlap && (
+              <p
+                className={`text-xs mb-3 ${dropConfirm.overlap.isProcessing ? "text-amber-600 dark:text-amber-400" : "text-destructive"}`}
+              >
+                ⚠ {dropConfirm.overlap.message}
+              </p>
             )}
             <div className="flex gap-2">
               <button
@@ -754,7 +929,11 @@ type BlockProps = {
   onBlockPointerMove: (e: React.PointerEvent) => void;
   onBlockPointerUp: (e: React.PointerEvent, block: RenderBlock) => void;
   onBlockPointerCancel: () => void;
-  onResizePointerDown: (e: React.PointerEvent, block: RenderBlock, edge: ResizeEdge) => void;
+  onResizePointerDown: (
+    e: React.PointerEvent,
+    block: RenderBlock,
+    edge: ResizeEdge,
+  ) => void;
   onResizePointerMove: (e: React.PointerEvent) => void;
   onResizePointerUp: (e: React.PointerEvent) => void;
   onResizePointerCancel: () => void;
@@ -797,7 +976,7 @@ function AppointmentBlock({
         height: heightPx - 2,
         left: `calc(${leftPct} + 4px)`,
         zIndex: zIdx,
-        borderLeft: leftPct !== '0%' ? `3px solid ${color}` : undefined,
+        borderLeft: leftPct !== "0%" ? `3px solid ${color}` : undefined,
         opacity: isDragging ? 0.35 : 1,
         ...bgStyle,
       }}
