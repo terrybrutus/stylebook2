@@ -622,6 +622,14 @@ export function WeekView({
       if (isTouch && !drag.dragArmed) {
         drag.dragArmed = true;
         drag.pointerTarget.setPointerCapture(drag.pointerId);
+        setDragGhost({
+          topPx: drag.block.topPx,
+          heightPx: drag.block.heightPx,
+          time: drag.block.appt.startTime,
+          dateStr,
+          color: drag.block.color,
+          label: drag.block.label,
+        });
       } else {
         setContextMenu({ x: e.clientX, y: e.clientY, appointment: block.appt });
       }
@@ -650,6 +658,7 @@ export function WeekView({
       if (dy > 8 || dx > 8) {
         if (drag.longPressTimer) clearTimeout(drag.longPressTimer);
         activeDragRef.current = null;
+        setDragGhost(null);
       }
       return;
     }
@@ -687,6 +696,8 @@ export function WeekView({
     if (drag?.longPressTimer) clearTimeout(drag.longPressTimer);
     activeDragRef.current = null;
     setDragGhost(null);
+    if (!drag) return;
+    if (drag.isTouch && drag.dragArmed && !drag.started) return;
     if (!drag?.started) {
       onModalChange({ isOpen: true, mode: "edit", appointment: block.appt });
       return;

@@ -135,6 +135,7 @@ export function DayView({ date, onModalChange }: Props) {
     offsetMinutes: number;
     started: boolean;
     startClientY: number;
+    startClientX: number;
     longPressTimer: ReturnType<typeof setTimeout> | null;
     isTouch: boolean;
     dragArmed: boolean;
@@ -374,6 +375,10 @@ export function DayView({ date, onModalChange }: Props) {
       if (isTouch && !drag.dragArmed) {
         drag.dragArmed = true;
         drag.pointerTarget.setPointerCapture(drag.pointerId);
+        setDragGhost({
+          topPx: drag.block.topPx,
+          time: drag.block.appt.startTime,
+        });
       } else {
         setContextMenu({ x: e.clientX, y: e.clientY, appointment: block.appt });
       }
@@ -383,6 +388,7 @@ export function DayView({ date, onModalChange }: Props) {
       offsetMinutes,
       started: false,
       startClientY: e.clientY,
+      startClientX: e.clientX,
       longPressTimer,
       isTouch,
       dragArmed: !isTouch,
@@ -395,15 +401,20 @@ export function DayView({ date, onModalChange }: Props) {
     const drag = activeDragRef.current;
     if (!drag) return;
     if (drag.isTouch && !drag.dragArmed) {
-      // Touch movement before arm fires — cancel drag so scroll works
-      if (Math.abs(e.clientY - drag.startClientY) > 8) {
+      // Movement before long-press means this is scroll/swipe, not tap/edit.
+      const dy = Math.abs(e.clientY - drag.startClientY);
+      const dx = Math.abs(e.clientX - drag.startClientX);
+      if (dy > 8 || dx > 8) {
         if (drag.longPressTimer) clearTimeout(drag.longPressTimer);
         activeDragRef.current = null;
+        setDragGhost(null);
       }
       return;
     }
     if (!drag.started) {
-      if (Math.abs(e.clientY - drag.startClientY) < 6) return;
+      const dy = Math.abs(e.clientY - drag.startClientY);
+      const dx = Math.abs(e.clientX - drag.startClientX);
+      if (dy < 6 && dx < 6) return;
       drag.started = true;
       if (drag.longPressTimer) {
         clearTimeout(drag.longPressTimer);
@@ -420,6 +431,8 @@ export function DayView({ date, onModalChange }: Props) {
     if (drag?.longPressTimer) clearTimeout(drag.longPressTimer);
     activeDragRef.current = null;
     setDragGhost(null);
+    if (!drag) return;
+    if (drag.isTouch && drag.dragArmed && !drag.started) return;
     if (!drag?.started) {
       onModalChange({ isOpen: true, mode: "edit", appointment: block.appt });
       return;

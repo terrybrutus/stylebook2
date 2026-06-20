@@ -11,6 +11,13 @@ interface LoadingFlags {
 interface HistoryEntry {
   appointments: Appointment[];
   route: string;
+  label: string;
+}
+
+export interface ActionLogEntry {
+  id: string;
+  label: string;
+  createdAt: string;
 }
 
 interface AppState {
@@ -30,10 +37,11 @@ interface AppState {
   // Undo/redo history (not persisted)
   appointmentHistory: HistoryEntry[];
   appointmentFuture: HistoryEntry[];
+  actionLog: ActionLogEntry[];
   pendingNavRoute: string | null;
   clearPendingNavRoute: () => void;
-  undo: () => void;
-  redo: () => void;
+  undo: () => Appointment[] | null;
+  redo: () => Appointment[] | null;
 
   // Actions — Appointments
   setAppointments: (appointments: Appointment[]) => void;
@@ -91,9 +99,36 @@ const DEFAULT_SETTINGS: Settings = {
   },
 };
 
+function logEntry(label: string): ActionLogEntry {
+  return {
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    label,
+    createdAt: new Date().toISOString(),
+  };
+}
+
+function historyLabel(
+  kind: "add" | "update" | "delete" | "bulk-delete",
+  value?: Appointment | number,
+): string {
+  if (kind === "add" && typeof value === "object") {
+    return `Booked ${value.clientName}`;
+  }
+  if (kind === "update" && typeof value === "object") {
+    return `Changed ${value.clientName}`;
+  }
+  if (kind === "delete" && typeof value === "object") {
+    return `Deleted ${value.clientName}`;
+  }
+  if (kind === "bulk-delete" && typeof value === "number") {
+    return `Deleted ${value} appointments`;
+  }
+  return "Changed appointments";
+}
+
 export const useAppStore = create<AppState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       // Initial state
       appointments: [],
       services: [],
@@ -103,6 +138,7 @@ export const useAppStore = create<AppState>()(
       currentRoute: "/",
       appointmentHistory: [],
       appointmentFuture: [],
+      actionLog: [],
       pendingNavRoute: null,
       pendingCalendarDate: null,
 
@@ -114,76 +150,121 @@ export const useAppStore = create<AppState>()(
         set({ appointments, appointmentHistory: [], appointmentFuture: [] }),
       syncAppointments: (appointments) => set({ appointments }),
       addAppointment: (appointment) =>
-        set((state) => ({
-          appointmentHistory: [
-            ...state.appointmentHistory.slice(-20),
-            { appointments: state.appointments, route: state.currentRoute },
-          ],
-          appointmentFuture: [],
-          appointments: [...state.appointments, appointment],
-        })),
-      updateAppointment: (appointment) =>
-        set((state) => ({
-          appointmentHistory: [
-            ...state.appointmentHistory.slice(-20),
-            { appointments: state.appointments, route: state.currentRoute },
-          ],
-          appointmentFuture: [],
-          appointments: state.appointments.map((a) =>
-            a.id === appointment.id ? appointment : a,
-          ),
-        })),
-      deleteAppointment: (id) =>
-        set((state) => ({
-          appointmentHistory: [
-            ...state.appointmentHistory.slice(-20),
-            { appointments: state.appointments, route: state.currentRoute },
-          ],
-          appointmentFuture: [],
-          appointments: state.appointments.filter((a) => a.id !== id),
-        })),
-      deleteAppointments: (ids) =>
         set((state) => {
-          const idSet = new Set(ids);
+          const label = historyLabel("add", appointment);
           return {
             appointmentHistory: [
               ...state.appointmentHistory.slice(-20),
-              { appointments: state.appointments, route: state.currentRoute },
+              {
+                appointments: state.appointments,
+                route: state.currentRoute,
+                label,
+              },
             ],
             appointmentFuture: [],
+            actionLog: [logEntry(label), ...state.actionLog].slice(0, 30),
+            appointments: [...state.appointments, appointment],
+          };
+        }),
+      updateAppointment: (appointment) =>
+        set((state) => {
+          const label = historyLabel("update", appointment);
+          return {
+            appointmentHistory: [
+              ...state.appointmentHistory.slice(-20),
+              {
+                appointments: state.appointments,
+                route: state.currentRoute,
+                label,
+              },
+            ],
+            appointmentFuture: [],
+            actionLog: [logEntry(label), ...state.actionLog].slice(0, 30),
+            appointments: state.appointments.map((a) =>
+              a.id === appointment.id ? appointment : a,
+            ),
+          };
+        }),
+      deleteAppointment: (id) =>
+        set((state) => {
+          const deleted = state.appointments.find((a) => a.id === id);
+          const label = historyLabel("delete", deleted);
+          return {
+            appointmentHistory: [
+              ...state.appointmentHistory.slice(-20),
+              {
+                appointments: state.appointments,
+                route: state.currentRoute,
+                label,
+              },
+            ],
+            appointmentFuture: [],
+            actionLog: [logEntry(label), ...state.actionLog].slice(0, 30),
+            appointments: state.appointments.filter((a) => a.id !== id),
+          };
+        }),
+      deleteAppointments: (ids) =>
+        set((state) => {
+          const idSet = new Set(ids);
+          const label = historyLabel("bulk-delete", ids.length);
+          return {
+            appointmentHistory: [
+              ...state.appointmentHistory.slice(-20),
+              {
+                appointments: state.appointments,
+                route: state.currentRoute,
+                label,
+              },
+            ],
+            appointmentFuture: [],
+            actionLog: [logEntry(label), ...state.actionLog].slice(0, 30),
             appointments: state.appointments.filter((a) => !idSet.has(a.id)),
           };
         }),
 
-      undo: () =>
-        set((state) => {
-          if (state.appointmentHistory.length === 0) return state;
-          const entry =
-            state.appointmentHistory[state.appointmentHistory.length - 1];
-          return {
-            appointmentHistory: state.appointmentHistory.slice(0, -1),
-            appointmentFuture: [
-              { appointments: state.appointments, route: state.currentRoute },
-              ...state.appointmentFuture.slice(0, 19),
-            ],
-            appointments: entry.appointments,
-            pendingNavRoute: entry.route,
-          };
-        }),
-      redo: () =>
-        set((state) => {
-          if (state.appointmentFuture.length === 0) return state;
-          const entry = state.appointmentFuture[0];
-          return {
-            appointmentHistory: [
-              ...state.appointmentHistory.slice(-19),
-              { appointments: state.appointments, route: state.currentRoute },
-            ],
-            appointmentFuture: state.appointmentFuture.slice(1),
-            appointments: entry.appointments,
-            pendingNavRoute: entry.route,
-          };
-        }),
+      undo: () => {
+        const state = get();
+        if (state.appointmentHistory.length === 0) return null;
+        const entry =
+          state.appointmentHistory[state.appointmentHistory.length - 1];
+        const label = `Undo: ${entry.label}`;
+        set({
+          appointmentHistory: state.appointmentHistory.slice(0, -1),
+          appointmentFuture: [
+            {
+              appointments: state.appointments,
+              route: state.currentRoute,
+              label: entry.label,
+            },
+            ...state.appointmentFuture.slice(0, 19),
+          ],
+          actionLog: [logEntry(label), ...state.actionLog].slice(0, 30),
+          appointments: entry.appointments,
+          pendingNavRoute: entry.route,
+        });
+        return entry.appointments;
+      },
+      redo: () => {
+        const state = get();
+        if (state.appointmentFuture.length === 0) return null;
+        const entry = state.appointmentFuture[0];
+        const label = `Redo: ${entry.label}`;
+        set({
+          appointmentHistory: [
+            ...state.appointmentHistory.slice(-19),
+            {
+              appointments: state.appointments,
+              route: state.currentRoute,
+              label: entry.label,
+            },
+          ],
+          appointmentFuture: state.appointmentFuture.slice(1),
+          actionLog: [logEntry(label), ...state.actionLog].slice(0, 30),
+          appointments: entry.appointments,
+          pendingNavRoute: entry.route,
+        });
+        return entry.appointments;
+      },
 
       // Service actions
       setServices: (services) => set({ services }),
@@ -249,6 +330,7 @@ export const useAppStore = create<AppState>()(
         const s = persisted as {
           settings?: Partial<typeof DEFAULT_SETTINGS>;
           clientContacts?: ClientContact[];
+          actionLog?: ActionLogEntry[];
         };
         return {
           settings: {
@@ -257,11 +339,13 @@ export const useAppStore = create<AppState>()(
             workingDays: DEFAULT_SETTINGS.workingDays,
           },
           clientContacts: s.clientContacts ?? [],
+          actionLog: s.actionLog ?? [],
         };
       },
       partialize: (state) => ({
         settings: state.settings,
         clientContacts: state.clientContacts,
+        actionLog: state.actionLog,
       }),
     },
   ),

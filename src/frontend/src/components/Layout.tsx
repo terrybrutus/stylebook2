@@ -12,10 +12,12 @@ import {
   Users,
 } from "lucide-react";
 import { useTheme } from "next-themes";
-import { useEffect, useState, type ReactNode } from "react";
+import { type ReactNode, useCallback, useEffect, useState } from "react";
 import { useShallow } from "zustand/shallow";
-import { GlobalSearch } from "./GlobalSearch";
+import * as api from "../lib/api";
 import { useAppStore } from "../store/useAppStore";
+import type { Appointment } from "../types";
+import { GlobalSearch } from "./GlobalSearch";
 
 interface NavItem {
   label: string;
@@ -48,17 +50,59 @@ export function Layout({ children }: LayoutProps) {
   const { theme, setTheme } = useTheme();
   const [showSearch, setShowSearch] = useState(false);
 
-  const { undo, redo, canUndo, canRedo, setCurrentRoute, pendingNavRoute, clearPendingNavRoute } = useAppStore(
+  const {
+    undo,
+    redo,
+    canUndo,
+    canRedo,
+    lastAction,
+    setCurrentRoute,
+    pendingNavRoute,
+    clearPendingNavRoute,
+  } = useAppStore(
     useShallow((s) => ({
       undo: s.undo,
       redo: s.redo,
       canUndo: s.appointmentHistory.length > 0,
       canRedo: s.appointmentFuture.length > 0,
+      lastAction: s.actionLog[0]?.label ?? "",
       setCurrentRoute: s.setCurrentRoute,
       pendingNavRoute: s.pendingNavRoute,
       clearPendingNavRoute: s.clearPendingNavRoute,
     })),
   );
+
+  const syncRestoredAppointments = useCallback(
+    async (appointments: Appointment[] | null) => {
+      if (!appointments) return;
+      await Promise.allSettled(
+        appointments.map((appointment) =>
+          api.updateAppointment(appointment.id, {
+            clientName: appointment.clientName,
+            serviceId: appointment.serviceId,
+            serviceName: appointment.serviceName,
+            date: appointment.date,
+            startTime: appointment.startTime,
+            durationMinutes: appointment.durationMinutes,
+            price: appointment.price,
+            phoneNumber: appointment.phoneNumber,
+            notes: appointment.notes,
+            phases: appointment.phases,
+            color: appointment.color,
+          }),
+        ),
+      );
+    },
+    [],
+  );
+
+  const handleUndo = useCallback(() => {
+    void syncRestoredAppointments(undo());
+  }, [syncRestoredAppointments, undo]);
+
+  const handleRedo = useCallback(() => {
+    void syncRestoredAppointments(redo());
+  }, [syncRestoredAppointments, redo]);
 
   // Track current route in store so history entries know where to navigate back to
   useEffect(() => {
@@ -78,16 +122,16 @@ export function Layout({ children }: LayoutProps) {
       if (!mod) return;
       if (e.key === "z" && !e.shiftKey) {
         e.preventDefault();
-        undo();
+        handleUndo();
       }
       if ((e.key === "z" && e.shiftKey) || e.key === "y") {
         e.preventDefault();
-        redo();
+        handleRedo();
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [undo, redo]);
+  }, [handleUndo, handleRedo]);
 
   function isActive(item: NavItem): boolean {
     if (item.matchPrefix) {
@@ -121,9 +165,9 @@ export function Layout({ children }: LayoutProps) {
           {canUndo && (
             <button
               type="button"
-              onClick={undo}
+              onClick={handleUndo}
               aria-label="Undo"
-              className="p-2 rounded-full hover:bg-muted transition-colors"
+              className="hidden md:inline-flex p-2 rounded-full hover:bg-muted transition-colors"
             >
               <Undo2 size={18} className="text-foreground" />
             </button>
@@ -131,9 +175,9 @@ export function Layout({ children }: LayoutProps) {
           {canRedo && (
             <button
               type="button"
-              onClick={redo}
+              onClick={handleRedo}
               aria-label="Redo"
-              className="p-2 rounded-full hover:bg-muted transition-colors"
+              className="hidden md:inline-flex p-2 rounded-full hover:bg-muted transition-colors"
             >
               <Redo2 size={18} className="text-foreground" />
             </button>
@@ -147,19 +191,19 @@ export function Layout({ children }: LayoutProps) {
           >
             <Search size={18} className="text-foreground" />
           </button>
-        <button
-          type="button"
-          onClick={toggleTheme}
-          aria-label="Toggle dark mode"
-          className="p-2 rounded-full hover:bg-muted transition-colors"
-          data-ocid="header.theme_toggle"
-        >
-          {theme === "dark" ? (
-            <Sun size={18} className="text-accent" />
-          ) : (
-            <Moon size={18} className="text-foreground" />
-          )}
-        </button>
+          <button
+            type="button"
+            onClick={toggleTheme}
+            aria-label="Toggle dark mode"
+            className="p-2 rounded-full hover:bg-muted transition-colors"
+            data-ocid="header.theme_toggle"
+          >
+            {theme === "dark" ? (
+              <Sun size={18} className="text-accent" />
+            ) : (
+              <Moon size={18} className="text-foreground" />
+            )}
+          </button>
         </div>
       </header>
 
@@ -210,10 +254,38 @@ export function Layout({ children }: LayoutProps) {
         </main>
       </div>
 
+      {(canUndo || canRedo) && (
+        <div className="md:hidden fixed right-3 bottom-[calc(env(safe-area-inset-bottom)+76px)] z-[70] flex items-center gap-1 rounded-full border border-border bg-card/95 px-2 py-1.5 shadow-lg backdrop-blur">
+          <button
+            type="button"
+            onClick={handleUndo}
+            disabled={!canUndo}
+            aria-label="Undo"
+            className="p-2 rounded-full disabled:opacity-35 active:bg-muted"
+          >
+            <Undo2 size={17} />
+          </button>
+          <button
+            type="button"
+            onClick={handleRedo}
+            disabled={!canRedo}
+            aria-label="Redo"
+            className="p-2 rounded-full disabled:opacity-35 active:bg-muted"
+          >
+            <Redo2 size={17} />
+          </button>
+          {lastAction && (
+            <span className="max-w-28 truncate pr-1 text-[10px] text-muted-foreground">
+              {lastAction}
+            </span>
+          )}
+        </div>
+      )}
+
       {/* Mobile bottom tab bar — safe-area-inset-bottom keeps it above iPhone home bar */}
       <nav
         className="md:hidden flex items-center bg-card border-t border-border flex-shrink-0"
-        style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 10px)' }}
+        style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 10px)" }}
         data-ocid="nav.bottom_tabs"
       >
         {NAV_ITEMS.map((item) => {
@@ -222,7 +294,7 @@ export function Layout({ children }: LayoutProps) {
             <Link
               key={item.path}
               to={item.path}
-              style={{ touchAction: 'manipulation' }}
+              style={{ touchAction: "manipulation" }}
               className={[
                 "flex-1 flex flex-col items-center justify-center py-2 gap-0.5 text-[10px] font-medium transition-colors min-h-[56px]",
                 active
