@@ -16,6 +16,11 @@ import { useMemo, useState } from "react";
 import { useShallow } from "zustand/shallow";
 import * as api from "../lib/api";
 import {
+  APPOINTMENT_STATUS_LABELS,
+  isActiveAppointment,
+  normalizeAppointmentStatus,
+} from "../lib/appointmentLifecycle";
+import {
   formatDate,
   formatDuration,
   formatPrice,
@@ -48,7 +53,8 @@ function ClientForm({
 
   const trimmedName = name.trim();
   const nameChanged = isEdit && trimmedName !== initial?.name;
-  const nameConflict = trimmedName !== initial?.name && existingNames.includes(trimmedName);
+  const nameConflict =
+    trimmedName !== initial?.name && existingNames.includes(trimmedName);
 
   function handleNameChange(val: string) {
     setName(capitalizeWords(val));
@@ -57,7 +63,11 @@ function ClientForm({
   function handleSave() {
     if (!trimmedName || nameConflict) return;
     onSave(
-      { name: trimmedName, phone: phone.trim() || undefined, notes: notes.trim() || undefined },
+      {
+        name: trimmedName,
+        phone: phone.trim() || undefined,
+        notes: notes.trim() || undefined,
+      },
       isEdit ? initial?.name : undefined,
     );
   }
@@ -73,7 +83,9 @@ function ClientForm({
         >
           <X size={18} />
         </button>
-        <h1 className="text-lg font-semibold flex-1">{isEdit ? "Edit Client" : "New Client"}</h1>
+        <h1 className="text-lg font-semibold flex-1">
+          {isEdit ? "Edit Client" : "New Client"}
+        </h1>
         <button
           type="button"
           onClick={handleSave}
@@ -87,7 +99,10 @@ function ClientForm({
 
       <div className="flex-1 overflow-auto px-4 py-4 flex flex-col gap-4">
         <div>
-          <label htmlFor="client-name" className="text-sm font-medium block mb-1.5">
+          <label
+            htmlFor="client-name"
+            className="text-sm font-medium block mb-1.5"
+          >
             Name *
           </label>
           <input
@@ -101,15 +116,22 @@ function ClientForm({
             data-ocid="clients.form.name_input"
           />
           {nameConflict && (
-            <p className="text-xs text-destructive mt-1">A client with this name already exists.</p>
+            <p className="text-xs text-destructive mt-1">
+              A client with this name already exists.
+            </p>
           )}
           {nameChanged && !nameConflict && (
-            <p className="text-xs text-muted-foreground mt-1">Renaming will update all their appointments.</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              Renaming will update all their appointments.
+            </p>
           )}
         </div>
 
         <div>
-          <label htmlFor="client-phone" className="text-sm font-medium block mb-1.5">
+          <label
+            htmlFor="client-phone"
+            className="text-sm font-medium block mb-1.5"
+          >
             Phone
           </label>
           <input
@@ -124,7 +146,10 @@ function ClientForm({
         </div>
 
         <div>
-          <label htmlFor="client-notes" className="text-sm font-medium block mb-1.5">
+          <label
+            htmlFor="client-notes"
+            className="text-sm font-medium block mb-1.5"
+          >
             Notes
           </label>
           <textarea
@@ -200,7 +225,9 @@ export default function Clients() {
         }
       }
     }
-    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
+    return Array.from(map.values()).sort((a, b) =>
+      a.name.localeCompare(b.name),
+    );
   }, [appointments, clientContacts]);
 
   const existingNames = clients.map((c) => c.name);
@@ -229,12 +256,17 @@ export default function Clients() {
         existingNames={existingNames}
         onSave={(contact, oldName) => {
           const prevName = oldName ?? screen.contact.name;
-          const apptsToSync = useAppStore.getState().appointments.filter((a) => a.clientName === prevName);
+          const apptsToSync = useAppStore
+            .getState()
+            .appointments.filter((a) => a.clientName === prevName);
           if (contact.name !== prevName) {
             // Rename: update all appointments and the contact record
             renameClient(prevName, contact.name);
             if (clientContacts.some((c) => c.name === contact.name)) {
-              updateClientContact(contact.name, { phone: contact.phone, notes: contact.notes });
+              updateClientContact(contact.name, {
+                phone: contact.phone,
+                notes: contact.notes,
+              });
             } else {
               addClientContact(contact);
             }
@@ -248,15 +280,20 @@ export default function Clients() {
                 updatedAt: new Date().toISOString(),
               };
               updateAppointment(updated);
-              api.updateAppointment(a.id, {
-                clientName: contact.name,
-                phoneNumber: contact.phone,
-                notes: contact.notes,
-              }).catch(console.error);
+              api
+                .updateAppointment(a.id, {
+                  clientName: contact.name,
+                  phoneNumber: contact.phone,
+                  notes: contact.notes,
+                })
+                .catch(console.error);
             }
           } else {
             if (clientContacts.some((c) => c.name === prevName)) {
-              updateClientContact(prevName, { phone: contact.phone, notes: contact.notes });
+              updateClientContact(prevName, {
+                phone: contact.phone,
+                notes: contact.notes,
+              });
             } else {
               addClientContact(contact);
             }
@@ -268,10 +305,12 @@ export default function Clients() {
                 updatedAt: new Date().toISOString(),
               };
               updateAppointment(updated);
-              api.updateAppointment(a.id, {
-                phoneNumber: contact.phone,
-                notes: contact.notes,
-              }).catch(console.error);
+              api
+                .updateAppointment(a.id, {
+                  phoneNumber: contact.phone,
+                  notes: contact.notes,
+                })
+                .catch(console.error);
             }
           }
           setScreen({ type: "list" });
@@ -291,7 +330,11 @@ export default function Clients() {
         onEdit={() => {
           setScreen({
             type: "edit",
-            contact: contact ?? { name: screen.client.name, phone: screen.client.phone, notes: screen.client.notes },
+            contact: contact ?? {
+              name: screen.client.name,
+              phone: screen.client.phone,
+              notes: screen.client.notes,
+            },
           });
         }}
         onDelete={() => {
@@ -395,7 +438,19 @@ function ClientRow({
   index: number;
   onSelect: () => void;
 }) {
-  const totalSpent = client.appointments.reduce((sum, a) => sum + a.price, 0);
+  const totalSpent = client.appointments
+    .filter(isActiveAppointment)
+    .reduce((sum, a) => sum + a.price, 0);
+  const inactiveCounts = client.appointments.reduce(
+    (counts, appointment) => {
+      const status = normalizeAppointmentStatus(appointment.status);
+      if (status === "canceled") counts.canceled += 1;
+      if (status === "no_show") counts.noShow += 1;
+      if (status === "rescheduled") counts.rescheduled += 1;
+      return counts;
+    },
+    { canceled: 0, noShow: 0, rescheduled: 0 },
+  );
   const initials = client.name
     .split(" ")
     .map((n) => n[0])
@@ -411,7 +466,8 @@ function ClientRow({
     "bg-[#e0f7fa] text-[#006064]",
     "bg-[#fafafa] text-[#37474f]",
   ];
-  const colorClass = avatarColors[client.name.charCodeAt(0) % avatarColors.length];
+  const colorClass =
+    avatarColors[client.name.charCodeAt(0) % avatarColors.length];
 
   return (
     <button
@@ -435,6 +491,25 @@ function ClientRow({
               ? client.phone
               : "No appointments yet"}
         </p>
+        {(inactiveCounts.canceled > 0 ||
+          inactiveCounts.noShow > 0 ||
+          inactiveCounts.rescheduled > 0) && (
+          <p className="text-[10px] text-muted-foreground mt-0.5">
+            {[
+              inactiveCounts.canceled > 0
+                ? `${inactiveCounts.canceled} canceled`
+                : null,
+              inactiveCounts.noShow > 0
+                ? `${inactiveCounts.noShow} no-show`
+                : null,
+              inactiveCounts.rescheduled > 0
+                ? `${inactiveCounts.rescheduled} rescheduled`
+                : null,
+            ]
+              .filter(Boolean)
+              .join(" · ")}
+          </p>
+        )}
       </div>
 
       <div className="flex items-center gap-2 flex-shrink-0">
@@ -463,19 +538,34 @@ function ClientDetail({
   onDelete: () => void;
 }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const todayStr = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; })();
-  const { upcoming, past } = useMemo(() => {
+  const todayStr = (() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  })();
+  const { upcoming, past, inactive } = useMemo(() => {
     const all = [...client.appointments].sort((a, b) => {
       const d = a.date.localeCompare(b.date);
       return d !== 0 ? d : a.startTime.localeCompare(b.startTime);
     });
+    const active = all.filter(isActiveAppointment);
     return {
-      upcoming: all.filter((a) => a.date >= todayStr),
-      past: all.filter((a) => a.date < todayStr).reverse(),
+      upcoming: active.filter((a) => a.date >= todayStr),
+      past: active.filter((a) => a.date < todayStr).reverse(),
+      inactive: all.filter((a) => !isActiveAppointment(a)).reverse(),
     };
   }, [client.appointments, todayStr]);
 
-  const totalSpent = client.appointments.reduce((sum, a) => sum + a.price, 0);
+  const totalSpent = client.appointments
+    .filter(isActiveAppointment)
+    .reduce((sum, a) => sum + a.price, 0);
+  const statusCounts = client.appointments.reduce(
+    (counts, appointment) => {
+      const status = normalizeAppointmentStatus(appointment.status);
+      counts[status] = (counts[status] ?? 0) + 1;
+      return counts;
+    },
+    {} as Record<string, number>,
+  );
   const initials = client.name
     .split(" ")
     .map((n) => n[0])
@@ -483,7 +573,9 @@ function ClientDetail({
     .join("")
     .toUpperCase();
 
-  const phone = contact?.phone ?? client.appointments.find((a) => a.phoneNumber)?.phoneNumber;
+  const phone =
+    contact?.phone ??
+    client.appointments.find((a) => a.phoneNumber)?.phoneNumber;
   const notes = contact?.notes ?? client.notes;
 
   return (
@@ -499,7 +591,9 @@ function ClientDetail({
           >
             <X size={18} />
           </button>
-          <h1 className="text-lg font-semibold flex-1 min-w-0 truncate">Client Profile</h1>
+          <h1 className="text-lg font-semibold flex-1 min-w-0 truncate">
+            Client Profile
+          </h1>
           <button
             type="button"
             onClick={onEdit}
@@ -545,9 +639,12 @@ function ClientDetail({
             <span className="text-lg font-bold text-accent">{initials}</span>
           </div>
           <div className="flex-1 min-w-0">
-            <h2 className="text-xl font-bold text-foreground truncate">{client.name}</h2>
+            <h2 className="text-xl font-bold text-foreground truncate">
+              {client.name}
+            </h2>
             <p className="text-sm text-muted-foreground mt-0.5">
-              {client.appointmentCount} appointment{client.appointmentCount !== 1 ? "s" : ""}
+              {client.appointmentCount} appointment
+              {client.appointmentCount !== 1 ? "s" : ""}
             </p>
             {phone && (
               <a
@@ -573,6 +670,26 @@ function ClientDetail({
             {notes}
           </div>
         )}
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          {(
+            [
+              "scheduled",
+              "completed",
+              "canceled",
+              "no_show",
+              "rescheduled",
+            ] as const
+          )
+            .filter((status) => (statusCounts[status] ?? 0) > 0)
+            .map((status) => (
+              <span
+                key={status}
+                className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground"
+              >
+                {APPOINTMENT_STATUS_LABELS[status]} {statusCounts[status]}
+              </span>
+            ))}
+        </div>
       </div>
 
       <div className="flex-1 overflow-auto px-4 py-3 flex flex-col gap-4">
@@ -588,9 +705,17 @@ function ClientDetail({
                 <p className="text-xs font-semibold text-accent uppercase tracking-wide mb-2">
                   Upcoming ({upcoming.length})
                 </p>
-                <div className="flex flex-col gap-3" data-ocid="clients.detail.upcoming_list">
+                <div
+                  className="flex flex-col gap-3"
+                  data-ocid="clients.detail.upcoming_list"
+                >
                   {upcoming.map((appt, i) => (
-                    <AppointmentHistoryCard key={appt.id} appt={appt} index={i + 1} upcoming />
+                    <AppointmentHistoryCard
+                      key={appt.id}
+                      appt={appt}
+                      index={i + 1}
+                      upcoming
+                    />
                   ))}
                 </div>
               </div>
@@ -600,9 +725,35 @@ function ClientDetail({
                 <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
                   History ({past.length})
                 </p>
-                <div className="flex flex-col gap-3" data-ocid="clients.detail.history_list">
+                <div
+                  className="flex flex-col gap-3"
+                  data-ocid="clients.detail.history_list"
+                >
                   {past.map((appt, i) => (
-                    <AppointmentHistoryCard key={appt.id} appt={appt} index={i + 1} />
+                    <AppointmentHistoryCard
+                      key={appt.id}
+                      appt={appt}
+                      index={i + 1}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+            {inactive.length > 0 && (
+              <div>
+                <p className="text-xs font-semibold text-amber-600 dark:text-amber-400 uppercase tracking-wide mb-2">
+                  Canceled / No-show / Rescheduled ({inactive.length})
+                </p>
+                <div
+                  className="flex flex-col gap-3"
+                  data-ocid="clients.detail.inactive_list"
+                >
+                  {inactive.map((appt, i) => (
+                    <AppointmentHistoryCard
+                      key={appt.id}
+                      appt={appt}
+                      index={i + 1}
+                    />
                   ))}
                 </div>
               </div>
@@ -616,10 +767,16 @@ function ClientDetail({
 
 // ─── Appointment History Card ─────────────────────────────────────────────────
 
-function AppointmentHistoryCard({ appt, index, upcoming }: { appt: Appointment; index: number; upcoming?: boolean }) {
+function AppointmentHistoryCard({
+  appt,
+  index,
+  upcoming,
+}: { appt: Appointment; index: number; upcoming?: boolean }) {
+  const status = normalizeAppointmentStatus(appt.status);
+  const isInactive = !isActiveAppointment(appt);
   return (
     <div
-      className={`rounded-xl overflow-hidden ${upcoming ? "border-2" : "border border-border bg-card"}`}
+      className={`rounded-xl overflow-hidden ${upcoming ? "border-2" : "border border-border bg-card"} ${isInactive ? "opacity-80" : ""}`}
       style={upcoming ? { borderColor: appt.color } : undefined}
       data-ocid={`clients.detail.item.${index}`}
     >
@@ -628,14 +785,31 @@ function AppointmentHistoryCard({ appt, index, upcoming }: { appt: Appointment; 
         style={{ borderLeft: `4px solid ${appt.color}` }}
       >
         <div className="flex-1 min-w-0">
-          <p className="font-semibold text-sm text-foreground truncate">{appt.serviceName}</p>
+          <div className="flex items-center gap-2 min-w-0">
+            <p className="font-semibold text-sm text-foreground truncate">
+              {appt.serviceName}
+            </p>
+            {isInactive && (
+              <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-semibold text-amber-700 dark:bg-amber-500/15 dark:text-amber-300">
+                {APPOINTMENT_STATUS_LABELS[status]}
+              </span>
+            )}
+          </div>
           <p className="text-xs text-muted-foreground mt-0.5">
-            {formatDate(appt.date, { weekday: "short", month: "short", day: "numeric", year: "numeric" })}
+            {formatDate(appt.date, {
+              weekday: "short",
+              month: "short",
+              day: "numeric",
+              year: "numeric",
+            })}
             {" · "}
             {formatTime12(appt.startTime)}
           </p>
         </div>
-        <span className="text-sm font-bold flex-shrink-0" style={{ color: appt.color }}>
+        <span
+          className="text-sm font-bold flex-shrink-0"
+          style={{ color: appt.color }}
+        >
           ${appt.price}
         </span>
       </div>
@@ -660,9 +834,21 @@ function AppointmentHistoryCard({ appt, index, upcoming }: { appt: Appointment; 
       {appt.notes && (
         <div className="px-3 py-2 border-t border-border/60">
           <div className="flex items-start gap-1.5">
-            <FileText size={12} className="text-muted-foreground mt-0.5 flex-shrink-0" />
-            <p className="text-xs text-muted-foreground leading-relaxed break-words">{appt.notes}</p>
+            <FileText
+              size={12}
+              className="text-muted-foreground mt-0.5 flex-shrink-0"
+            />
+            <p className="text-xs text-muted-foreground leading-relaxed break-words">
+              {appt.notes}
+            </p>
           </div>
+        </div>
+      )}
+      {appt.statusReason && (
+        <div className="px-3 py-2 border-t border-border/60">
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            Reason: {appt.statusReason}
+          </p>
         </div>
       )}
     </div>

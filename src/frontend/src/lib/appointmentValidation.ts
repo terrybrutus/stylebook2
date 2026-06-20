@@ -1,4 +1,5 @@
 import type { Appointment, Settings } from "../types";
+import { isActiveAppointment } from "./appointmentLifecycle";
 import { formatTime12, getWorkingScheduleForDate } from "./utils";
 
 interface TimeBlock {
@@ -55,6 +56,7 @@ export function validateAppointmentChange(
   const newBlocks = getAppointmentBlocks(updated);
 
   for (const existing of appointments) {
+    if (!isActiveAppointment(existing)) continue;
     if (existing.id === updated.id || existing.date !== updated.date) continue;
     const existingBlocks = getAppointmentBlocks(existing);
 

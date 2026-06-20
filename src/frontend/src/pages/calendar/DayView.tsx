@@ -1,19 +1,21 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useShallow } from "zustand/shallow";
+import AppointmentCancelModal from "../../components/AppointmentCancelModal";
 import * as api from "../../lib/api";
+import {
+  getCalendarHourPx,
+  isActiveAppointment,
+} from "../../lib/appointmentLifecycle";
 import { validateAppointmentChange } from "../../lib/appointmentValidation";
 import {
-  durationToPixels,
   formatDuration,
   formatPrice,
   formatTime12,
   generateTimeSlots,
-  getCurrentTimePixels,
   getEffectiveGridHours,
   getWorkingScheduleForDate,
   hexToRgba,
   hueRotate,
-  timeToPixels,
 } from "../../lib/utils";
 import { useAppStore } from "../../store/useAppStore";
 import type {
@@ -21,8 +23,6 @@ import type {
   AppointmentModalState,
   PhaseInstance,
 } from "../../types";
-
-const HOUR_PX = 60;
 
 function recalcPhaseStarts(
   phases: PhaseInstance[],
@@ -99,23 +99,34 @@ type RenderBlock = {
 type ResizeEdge = "top" | "bottom";
 
 export function DayView({ date, onModalChange }: Props) {
-  const { settings, allAppointments, deleteAppointment, updateAppointment } =
-    useAppStore(
-      useShallow((s) => ({
-        settings: s.settings,
-        allAppointments: s.appointments,
-        deleteAppointment: s.deleteAppointment,
-        updateAppointment: s.updateAppointment,
-      })),
-    );
+  const { settings, allAppointments, updateAppointment } = useAppStore(
+    useShallow((s) => ({
+      settings: s.settings,
+      allAppointments: s.appointments,
+      updateAppointment: s.updateAppointment,
+    })),
+  );
   // Filter outside selector — filter() creates a new array reference every call,
   // which causes React #185 (useSyncExternalStore stale snapshot loop) if inside useShallow
   const appointments = useMemo(
-    () => allAppointments.filter((a) => a.date === date),
+    () =>
+      allAppointments.filter((a) => a.date === date && isActiveAppointment(a)),
     [allAppointments, date],
   );
 
   const { startHour, endHour } = getEffectiveGridHours(settings);
+  const HOUR_PX = getCalendarHourPx(settings);
+  const minutePx = HOUR_PX / 60;
+  const timeToLocalPixels = (time: string) => {
+    const [h, m] = time.split(":").map(Number);
+    return (h * 60 + m - startHour * 60) * minutePx;
+  };
+  const durationToLocalPixels = (durationMinutes: number) =>
+    durationMinutes * minutePx;
+  const currentTimeToPixels = useCallback(() => {
+    const now = new Date();
+    return (now.getHours() * 60 + now.getMinutes() - startHour * 60) * minutePx;
+  }, [minutePx, startHour]);
   const timeSlots = generateTimeSlots(startHour, endHour);
   const totalPx = (endHour - startHour) * HOUR_PX;
 
@@ -123,10 +134,10 @@ export function DayView({ date, onModalChange }: Props) {
   const isToday =
     date ===
     `${_now.getFullYear()}-${String(_now.getMonth() + 1).padStart(2, "0")}-${String(_now.getDate()).padStart(2, "0")}`;
-  const [currentTimePx, setCurrentTimePx] = useState(() =>
-    getCurrentTimePixels(startHour),
-  );
+  const [currentTimePx, setCurrentTimePx] = useState(currentTimeToPixels);
   const [contextMenu, setContextMenu] = useState<ContextMenu | null>(null);
+  const [cancelAppointment, setCancelAppointment] =
+    useState<Appointment | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const dayColRef = useRef<HTMLDivElement>(null);
 
@@ -171,11 +182,11 @@ export function DayView({ date, onModalChange }: Props) {
   useEffect(() => {
     if (!isToday) return;
     const id = setInterval(
-      () => setCurrentTimePx(getCurrentTimePixels(startHour)),
+      () => setCurrentTimePx(currentTimeToPixels()),
       30000,
     );
     return () => clearInterval(id);
-  }, [isToday, startHour]);
+  }, [currentTimeToPixels, isToday]);
 
   // Close context menu on outside click
   useEffect(() => {
@@ -275,7 +286,7 @@ export function DayView({ date, onModalChange }: Props) {
     return {
       startTime: minutesToTimeStr(nextStart),
       durationMinutes,
-      topPx: ((nextStart - startHour * 60) / 60) * HOUR_PX,
+      topPx: (nextStart - startHour * 60) * minutePx,
       heightPx: Math.max((durationMinutes / 60) * HOUR_PX, 20),
     };
   }
@@ -422,7 +433,7 @@ export function DayView({ date, onModalChange }: Props) {
       }
     }
     const totalMin = getSnappedMinutes(e.clientY, drag.offsetMinutes);
-    const topPx = ((totalMin - startHour * 60) / 60) * HOUR_PX;
+    const topPx = (totalMin - startHour * 60) * minutePx;
     setDragGhost({ topPx, time: minutesToTimeStr(totalMin) });
   }
 
@@ -558,8 +569,8 @@ export function DayView({ date, onModalChange }: Props) {
   const rawBlocks: Omit<RenderBlock, "leftPct" | "zIdx">[] = [];
   for (const appt of appointments) {
     if (appt.phases.length === 0) {
-      const top = timeToPixels(appt.startTime, startHour);
-      const height = Math.max(durationToPixels(appt.durationMinutes), 20);
+      const top = timeToLocalPixels(appt.startTime);
+      const height = Math.max(durationToLocalPixels(appt.durationMinutes), 20);
       rawBlocks.push({
         appt,
         topPx: top,
@@ -572,8 +583,11 @@ export function DayView({ date, onModalChange }: Props) {
     } else {
       appt.phases.forEach((phase, i) => {
         const startMin = getPhaseStartMinutes(phase);
-        const topPx = ((startMin - startHour * 60) / 60) * HOUR_PX;
-        const height = Math.max(durationToPixels(phase.durationMinutes), 20);
+        const topPx = (startMin - startHour * 60) * minutePx;
+        const height = Math.max(
+          durationToLocalPixels(phase.durationMinutes),
+          20,
+        );
         const { label, isProcessing } = getBlockLabel(appt, i);
         rawBlocks.push({
           appt,
@@ -640,7 +654,7 @@ export function DayView({ date, onModalChange }: Props) {
         style={{ height: totalPx }}
       >
         {timeSlots.map((slot) => {
-          const top = timeToPixels(slot, startHour);
+          const top = timeToLocalPixels(slot);
           const [_h, m] = slot.split(":").map(Number);
           const isHour = m === 0;
           return (
@@ -699,7 +713,7 @@ export function DayView({ date, onModalChange }: Props) {
                 <div
                   className="absolute left-0 right-0 top-0 pointer-events-none z-[2]"
                   style={{
-                    height: ((dayStart - globalStart) / 60) * HOUR_PX,
+                    height: (dayStart - globalStart) * minutePx,
                     backgroundColor: "rgba(0,0,0,0.12)",
                   }}
                 />
@@ -708,7 +722,7 @@ export function DayView({ date, onModalChange }: Props) {
                 <div
                   className="absolute left-0 right-0 pointer-events-none z-[2]"
                   style={{
-                    top: ((dayEnd - globalStart) / 60) * HOUR_PX,
+                    top: (dayEnd - globalStart) * minutePx,
                     bottom: 0,
                     backgroundColor: "rgba(0,0,0,0.12)",
                   }}
@@ -720,7 +734,7 @@ export function DayView({ date, onModalChange }: Props) {
 
         {/* Horizontal guide lines at every 30-min mark — on ALL columns including today */}
         {timeSlots.map((slot) => {
-          const top = timeToPixels(slot, startHour);
+          const top = timeToLocalPixels(slot);
           const [, m] = slot.split(":").map(Number);
           const isHour = m === 0;
           return (
@@ -734,12 +748,12 @@ export function DayView({ date, onModalChange }: Props) {
 
         {/* Clickable time slots — below appointment z-index */}
         {timeSlots.map((slot) => {
-          const top = timeToPixels(slot, startHour);
+          const top = timeToLocalPixels(slot);
           return (
             <div
               key={slot}
               className="absolute left-0 right-0"
-              style={{ top, height: 30, zIndex: 1 }}
+              style={{ top, height: HOUR_PX / 2, zIndex: 1 }}
               role="button"
               tabIndex={0}
               onClick={(e) => {
@@ -868,17 +882,20 @@ export function DayView({ date, onModalChange }: Props) {
             type="button"
             className="w-full text-left px-4 py-2.5 text-sm text-destructive hover:bg-muted transition-colors"
             onClick={() => {
-              const id = contextMenu.appointment.id;
-              deleteAppointment(id);
-              api.deleteAppointment(id).catch(console.error);
+              setCancelAppointment(contextMenu.appointment);
               setContextMenu(null);
             }}
             data-ocid="appointment.delete_button"
           >
-            Delete
+            Cancel / no-show
           </button>
         </div>
       )}
+
+      <AppointmentCancelModal
+        appointment={cancelAppointment}
+        onClose={() => setCancelAppointment(null)}
+      />
 
       {/* Drop confirmation dialog */}
       {dropConfirm && (

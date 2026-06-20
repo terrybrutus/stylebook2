@@ -295,6 +295,7 @@ export default function Settings() {
         notes: row.notes,
         phases,
         color: service.color,
+        status: "scheduled",
       });
       restored.push(created);
     }
@@ -347,6 +348,9 @@ export default function Settings() {
         notes: appointment.notes,
         phases: appointment.phases,
         color: service.color,
+        status: appointment.status,
+        statusReason: appointment.statusReason,
+        statusUpdatedAt: appointment.statusUpdatedAt,
       });
       restoredAppointments.push(created);
     }
@@ -477,6 +481,35 @@ export default function Settings() {
                 onToggle={() => toggleBool("startWeekOnMonday")}
                 ocid="settings.start_week_monday_toggle"
               />
+              <div className="border-t border-border px-4 py-3">
+                <p className="text-sm font-medium">Calendar density</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Condenses Day and Week time grids without changing appointment
+                  times.
+                </p>
+                <div className="mt-2 grid grid-cols-3 gap-1 rounded-lg bg-muted p-1">
+                  {(["comfortable", "compact", "dense"] as const).map(
+                    (density) => (
+                      <button
+                        key={density}
+                        type="button"
+                        onClick={() => {
+                          updateSettings({ calendarDensity: density });
+                          api.updateSettings({ calendarDensity: density });
+                        }}
+                        className={`rounded-md px-2 py-1.5 text-xs font-medium capitalize transition-colors ${
+                          (settings.calendarDensity ?? "compact") === density
+                            ? "bg-card text-foreground shadow-sm"
+                            : "text-muted-foreground hover:text-foreground"
+                        }`}
+                        data-ocid={`settings.calendar_density_${density}`}
+                      >
+                        {density}
+                      </button>
+                    ),
+                  )}
+                </div>
+              </div>
             </div>
           </div>
 

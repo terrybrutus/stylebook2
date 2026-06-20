@@ -1,7 +1,8 @@
 import type { ClassValue } from "clsx";
-import type { Appointment, Service, Settings } from "../types";
 import { clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
+import type { Appointment, Service, Settings } from "../types";
+import { isActiveAppointment } from "./appointmentLifecycle";
 
 export function cn(...inputs: ClassValue[]): string {
   return twMerge(clsx(inputs));
@@ -191,18 +192,30 @@ export function getMonthGrid(
 }
 
 /** Compute effective calendar grid bounds — expands to cover all enabled working day hours */
-export function getEffectiveGridHours(settings: Settings): { startHour: number; endHour: number } {
+export function getEffectiveGridHours(settings: Settings): {
+  startHour: number;
+  endHour: number;
+} {
   const globalStart = Number(settings.workingHoursStart.split(":")[0]);
   const globalEnd = Number(settings.workingHoursEnd.split(":")[0]);
-  if (!settings.workingDays) return { startHour: globalStart, endHour: globalEnd };
+  if (!settings.workingDays)
+    return { startHour: globalStart, endHour: globalEnd };
   const enabled = Object.values(settings.workingDays).filter((d) => d.enabled);
-  if (enabled.length === 0) return { startHour: globalStart, endHour: globalEnd };
-  const minStart = Math.min(...enabled.map((d) => Number(d.start.split(":")[0])));
-  const maxEnd = Math.max(...enabled.map((d) => {
-    const [h, m] = d.end.split(":").map(Number);
-    return m > 0 ? h + 1 : h;
-  }));
-  return { startHour: Math.min(globalStart, minStart), endHour: Math.max(globalEnd, maxEnd) };
+  if (enabled.length === 0)
+    return { startHour: globalStart, endHour: globalEnd };
+  const minStart = Math.min(
+    ...enabled.map((d) => Number(d.start.split(":")[0])),
+  );
+  const maxEnd = Math.max(
+    ...enabled.map((d) => {
+      const [h, m] = d.end.split(":").map(Number);
+      return m > 0 ? h + 1 : h;
+    }),
+  );
+  return {
+    startHour: Math.min(globalStart, minStart),
+    endHour: Math.max(globalEnd, maxEnd),
+  };
 }
 
 /** Get working hours for a specific date, falling back to global hours */
@@ -227,14 +240,17 @@ export function getWorkingScheduleForDate(
     const isOnWeek = weeksDiff % 2 === 0;
     return { start: schedule.start, end: schedule.end, enabled: isOnWeek };
   }
-  return { start: schedule.start, end: schedule.end, enabled: schedule.enabled };
+  return {
+    start: schedule.start,
+    end: schedule.end,
+    enabled: schedule.enabled,
+  };
 }
 
 /** Recalculate phase start times from a new base start time */
-export function recalcPhaseStarts<T extends { durationMinutes: number; startTime: string }>(
-  phases: T[],
-  baseStart: string,
-): T[] {
+export function recalcPhaseStarts<
+  T extends { durationMinutes: number; startTime: string },
+>(phases: T[], baseStart: string): T[] {
   const [sh, sm] = baseStart.split(":").map(Number);
   let cursor = sh * 60 + sm;
   return phases.map((p) => {
@@ -248,9 +264,9 @@ export function recalcPhaseStarts<T extends { durationMinutes: number; startTime
 /** Rotate the hue of a hex color by `degrees` (0-360). */
 export function hueRotate(hex: string, degrees: number): string {
   if (!hex.startsWith("#") || hex.length < 7) return hex;
-  const r = parseInt(hex.slice(1, 3), 16) / 255;
-  const g = parseInt(hex.slice(3, 5), 16) / 255;
-  const b = parseInt(hex.slice(5, 7), 16) / 255;
+  const r = Number.parseInt(hex.slice(1, 3), 16) / 255;
+  const g = Number.parseInt(hex.slice(3, 5), 16) / 255;
+  const b = Number.parseInt(hex.slice(5, 7), 16) / 255;
   const max = Math.max(r, g, b);
   const min = Math.min(r, g, b);
   const l = (max + min) / 2;
@@ -271,21 +287,43 @@ export function hueRotate(hex: string, degrees: number): string {
   let r1: number;
   let g1: number;
   let b1: number;
-  if (h < 60)      { r1 = c; g1 = x; b1 = 0; }
-  else if (h < 120){ r1 = x; g1 = c; b1 = 0; }
-  else if (h < 180){ r1 = 0; g1 = c; b1 = x; }
-  else if (h < 240){ r1 = 0; g1 = x; b1 = c; }
-  else if (h < 300){ r1 = x; g1 = 0; b1 = c; }
-  else             { r1 = c; g1 = 0; b1 = x; }
-  const toHex = (n: number) => Math.round((n + m) * 255).toString(16).padStart(2, "0");
+  if (h < 60) {
+    r1 = c;
+    g1 = x;
+    b1 = 0;
+  } else if (h < 120) {
+    r1 = x;
+    g1 = c;
+    b1 = 0;
+  } else if (h < 180) {
+    r1 = 0;
+    g1 = c;
+    b1 = x;
+  } else if (h < 240) {
+    r1 = 0;
+    g1 = x;
+    b1 = c;
+  } else if (h < 300) {
+    r1 = x;
+    g1 = 0;
+    b1 = c;
+  } else {
+    r1 = c;
+    g1 = 0;
+    b1 = x;
+  }
+  const toHex = (n: number) =>
+    Math.round((n + m) * 255)
+      .toString(16)
+      .padStart(2, "0");
   return `#${toHex(r1)}${toHex(g1)}${toHex(b1)}`;
 }
 
 // ─── Smart slot suggestions ───────────────────────────────────────────────────
 
 export interface SlotSuggestion {
-  date: string;       // YYYY-MM-DD
-  time: string;       // HH:MM (24h)
+  date: string; // YYYY-MM-DD
+  time: string; // HH:MM (24h)
   type: "open" | "processing-gap";
   duringClient?: string; // set when type === "processing-gap"
 }
@@ -302,29 +340,55 @@ function minToTime(totalMin: number): string {
 }
 
 /** Get concrete time blocks for an existing appointment */
-function getApptBlocks(appt: Appointment): { start: number; end: number; isProcessing: boolean; clientName: string }[] {
+function getApptBlocks(
+  appt: Appointment,
+): { start: number; end: number; isProcessing: boolean; clientName: string }[] {
   if (appt.phases.length === 0) {
     const s = timeToMin(appt.startTime);
-    return [{ start: s, end: s + appt.durationMinutes, isProcessing: false, clientName: appt.clientName }];
+    return [
+      {
+        start: s,
+        end: s + appt.durationMinutes,
+        isProcessing: false,
+        clientName: appt.clientName,
+      },
+    ];
   }
   return appt.phases.map((p) => {
-    const timePart = p.startTime.includes("T") ? p.startTime.split("T")[1].slice(0, 5) : p.startTime.slice(0, 5);
+    const timePart = p.startTime.includes("T")
+      ? p.startTime.split("T")[1].slice(0, 5)
+      : p.startTime.slice(0, 5);
     const s = timeToMin(timePart);
-    return { start: s, end: s + p.durationMinutes, isProcessing: p.phaseType === "processing", clientName: appt.clientName };
+    return {
+      start: s,
+      end: s + p.durationMinutes,
+      isProcessing: p.phaseType === "processing",
+      clientName: appt.clientName,
+    };
   });
 }
 
 /** Get concrete time blocks for a hypothetical new/edited appointment starting at startMin */
-function getNewBlocks(startMin: number, service: Service | null, durationMinutes: number): { start: number; end: number; isProcessing: boolean }[] {
+function getNewBlocks(
+  startMin: number,
+  service: Service | null,
+  durationMinutes: number,
+): { start: number; end: number; isProcessing: boolean }[] {
   if (service?.category === "multi" && service.phases.length > 0) {
     let cursor = startMin;
     return service.phases.map((p) => {
-      const block = { start: cursor, end: cursor + p.durationMinutes, isProcessing: p.phaseType === "processing" };
+      const block = {
+        start: cursor,
+        end: cursor + p.durationMinutes,
+        isProcessing: p.phaseType === "processing",
+      };
       cursor += p.durationMinutes;
       return block;
     });
   }
-  return [{ start: startMin, end: startMin + durationMinutes, isProcessing: false }];
+  return [
+    { start: startMin, end: startMin + durationMinutes, isProcessing: false },
+  ];
 }
 
 /**
@@ -349,7 +413,9 @@ export function findAvailableSlots(
   const dayStart = timeToMin(schedule.start);
   const dayEnd = timeToMin(schedule.end);
 
-  const dayAppts = appointments.filter((a) => a.date === date && a.id !== excludeApptId);
+  const dayAppts = appointments.filter(
+    (a) => a.date === date && a.id !== excludeApptId && isActiveAppointment(a),
+  );
   const existingBlocks = dayAppts.flatMap(getApptBlocks);
   const existingActive = existingBlocks.filter((b) => !b.isProcessing);
   const existingProcessing = existingBlocks.filter((b) => b.isProcessing);
@@ -416,7 +482,14 @@ export function findNextAvailable(
     const d = new Date(base);
     d.setDate(base.getDate() + i);
     const dateStr = dateToString(d);
-    const slots = findAvailableSlots(dateStr, service, durationMinutes, appointments, settings, excludeApptId);
+    const slots = findAvailableSlots(
+      dateStr,
+      service,
+      durationMinutes,
+      appointments,
+      settings,
+      excludeApptId,
+    );
     if (slots.length > 0) return slots[0];
   }
   return null;

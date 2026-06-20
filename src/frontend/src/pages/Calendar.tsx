@@ -13,6 +13,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useShallow } from "zustand/shallow";
 import AppointmentModal from "../components/AppointmentModal";
 import QuickRebook from "../components/QuickRebook";
+import { isActiveAppointment } from "../lib/appointmentLifecycle";
 import { useAppStore } from "../store/useAppStore";
 import type { AppointmentModalState, CalendarView } from "../types";
 import { AgendaView } from "./calendar/AgendaView";
@@ -94,11 +95,20 @@ export default function Calendar() {
     isOpen: false,
     mode: "create",
   });
-  const [rebookPrefill, setRebookPrefill] = useState<{ clientName: string; serviceId: string } | null>(null);
+  const [rebookPrefill, setRebookPrefill] = useState<{
+    clientName: string;
+    serviceId: string;
+  } | null>(null);
 
   const appointments = useAppStore(useShallow((s) => s.appointments));
-  const dayAppts = view === "day" ? appointments.filter((a) => a.date === currentDate) : [];
-  const dayRevenue = view === "day" ? dayAppts.reduce((sum, a) => sum + a.price, 0) : null;
+  const dayAppts =
+    view === "day"
+      ? appointments.filter(
+          (a) => a.date === currentDate && isActiveAppointment(a),
+        )
+      : [];
+  const dayRevenue =
+    view === "day" ? dayAppts.reduce((sum, a) => sum + a.price, 0) : null;
   const dayCount = view === "day" ? dayAppts.length : null;
 
   const handlePrev = useCallback(() => {
@@ -141,10 +151,13 @@ export default function Calendar() {
     setModalState({ isOpen: true, mode: "create", prefillDate: currentDate });
   }, [currentDate]);
 
-  const handleRebook = useCallback((clientName: string, serviceId: string) => {
-    setRebookPrefill({ clientName, serviceId });
-    setModalState({ isOpen: true, mode: "create", prefillDate: currentDate });
-  }, [currentDate]);
+  const handleRebook = useCallback(
+    (clientName: string, serviceId: string) => {
+      setRebookPrefill({ clientName, serviceId });
+      setModalState({ isOpen: true, mode: "create", prefillDate: currentDate });
+    },
+    [currentDate],
+  );
 
   const d = new Date(`${currentDate}T00:00:00`);
 
@@ -239,10 +252,14 @@ export default function Calendar() {
         {/* Today shortcut + stats */}
         <div className="flex items-center gap-2 ml-auto">
           {dayCount !== null && dayCount > 0 && (
-            <span className="text-xs text-muted-foreground">{dayCount} appt{dayCount !== 1 ? "s" : ""}</span>
+            <span className="text-xs text-muted-foreground">
+              {dayCount} appt{dayCount !== 1 ? "s" : ""}
+            </span>
           )}
           {dayRevenue !== null && dayRevenue > 0 && (
-            <span className="text-xs font-semibold text-accent">${dayRevenue.toFixed(2)}</span>
+            <span className="text-xs font-semibold text-accent">
+              ${dayRevenue.toFixed(2)}
+            </span>
           )}
           <Button
             type="button"
@@ -269,7 +286,9 @@ export default function Calendar() {
             anchorDate={d}
             onModalChange={handleModalChange}
             onDayClick={handleDayClick}
-            onWeekChange={(dir) => setCurrentDate((date) => addWeeks(date, dir))}
+            onWeekChange={(dir) =>
+              setCurrentDate((date) => addWeeks(date, dir))
+            }
           />
         )}
         {view === "month" && (
@@ -308,9 +327,16 @@ export default function Calendar() {
 
       {/* Appointment modal */}
       <AppointmentModal
-        key={modalState.isOpen ? `open-${rebookPrefill?.clientName ?? ""}` : "closed"}
+        key={
+          modalState.isOpen
+            ? `open-${rebookPrefill?.clientName ?? ""}`
+            : "closed"
+        }
         isOpen={modalState.isOpen}
-        onClose={() => { handleModalClose(); setRebookPrefill(null); }}
+        onClose={() => {
+          handleModalClose();
+          setRebookPrefill(null);
+        }}
         mode={modalState.mode}
         appointment={modalState.appointment}
         prefillDate={modalState.prefillDate}

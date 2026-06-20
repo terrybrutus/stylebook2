@@ -80,6 +80,7 @@ const DEFAULT_SETTINGS: Settings = {
   startWeekOnMonday: true,
   darkMode: false,
   mobileWeekLayout: "three-day",
+  calendarDensity: "compact",
   workingHoursStart: "07:00",
   workingHoursEnd: "19:00",
   workingDays: {
@@ -147,8 +148,21 @@ export const useAppStore = create<AppState>()(
 
       // Appointment actions
       setAppointments: (appointments) =>
-        set({ appointments, appointmentHistory: [], appointmentFuture: [] }),
-      syncAppointments: (appointments) => set({ appointments }),
+        set({
+          appointments: appointments.map((appointment) => ({
+            ...appointment,
+            status: appointment.status ?? "scheduled",
+          })),
+          appointmentHistory: [],
+          appointmentFuture: [],
+        }),
+      syncAppointments: (appointments) =>
+        set({
+          appointments: appointments.map((appointment) => ({
+            ...appointment,
+            status: appointment.status ?? "scheduled",
+          })),
+        }),
       addAppointment: (appointment) =>
         set((state) => {
           const label = historyLabel("add", appointment);

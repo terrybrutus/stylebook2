@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useShallow } from "zustand/shallow";
+import AppointmentCancelModal from "../../components/AppointmentCancelModal";
 import * as api from "../../lib/api";
+import {
+  getCalendarHourPx,
+  isActiveAppointment,
+} from "../../lib/appointmentLifecycle";
 import { validateAppointmentChange } from "../../lib/appointmentValidation";
 import {
   dateToString,
@@ -23,10 +28,12 @@ import type {
 
 const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-// 2.5px per minute = 150px per hour
-const MIN_PX = 2.5;
-function minutesToPx(minutes: number, startMinutes: number): number {
-  return (minutes - startMinutes) * MIN_PX;
+function minutesToPx(
+  minutes: number,
+  startMinutes: number,
+  minutePx: number,
+): number {
+  return (minutes - startMinutes) * minutePx;
 }
 
 function recalcPhaseStarts(
@@ -96,23 +103,22 @@ export function WeekView({
   onDayClick,
   onWeekChange,
 }: Props) {
-  const { settings, allAppointments, deleteAppointment, updateSettings } =
-    useAppStore(
-      useShallow((s) => ({
-        settings: s.settings,
-        allAppointments: s.appointments,
-        deleteAppointment: s.deleteAppointment,
-        updateSettings: s.updateSettings,
-      })),
-    );
+  const { settings, allAppointments, updateSettings } = useAppStore(
+    useShallow((s) => ({
+      settings: s.settings,
+      allAppointments: s.appointments,
+      updateSettings: s.updateSettings,
+    })),
+  );
 
   const updateAppointmentInStore = useAppStore((s) => s.updateAppointment);
 
   const { startHour, endHour } = getEffectiveGridHours(settings);
+  const minutePx = getCalendarHourPx(settings) / 60;
   const startMinutes = startHour * 60;
   const endMinutes = endHour * 60;
   const totalMinutes = endMinutes - startMinutes;
-  const totalPx = totalMinutes * MIN_PX;
+  const totalPx = totalMinutes * minutePx;
   const timeSlots = generateTimeSlots(startHour, endHour);
 
   // Week dates respecting startWeekOnMonday setting
@@ -122,9 +128,15 @@ export function WeekView({
   const todayStr = dateToString(new Date());
   const [currentTimePx, setCurrentTimePx] = useState(() => {
     const now = new Date();
-    return minutesToPx(now.getHours() * 60 + now.getMinutes(), startHour * 60);
+    return minutesToPx(
+      now.getHours() * 60 + now.getMinutes(),
+      startHour * 60,
+      minutePx,
+    );
   });
   const [contextMenu, setContextMenu] = useState<ContextMenu | null>(null);
+  const [cancelAppointment, setCancelAppointment] =
+    useState<Appointment | null>(null);
 
   // Mobile 3-day swipe state — reset window to show today when anchorDate changes
   const [mobileStartIdx, setMobileStartIdx] = useState(() => {
@@ -215,11 +227,15 @@ export function WeekView({
     const id = setInterval(() => {
       const now = new Date();
       setCurrentTimePx(
-        minutesToPx(now.getHours() * 60 + now.getMinutes(), startMinutes),
+        minutesToPx(
+          now.getHours() * 60 + now.getMinutes(),
+          startMinutes,
+          minutePx,
+        ),
       );
     }, 30000);
     return () => clearInterval(id);
-  }, [startMinutes]);
+  }, [startMinutes, minutePx]);
 
   useEffect(() => {
     if (!contextMenu) return;
@@ -439,9 +455,8 @@ export function WeekView({
     offsetMinutes: number,
   ): number {
     const rect = colEl.getBoundingClientRect();
-    const relY =
-      clientY - rect.top - (offsetMinutes / MIN_PX / 60) * MIN_PX * 60;
-    const rawMin = startMinutes + relY / MIN_PX;
+    const relY = clientY - rect.top - offsetMinutes * minutePx;
+    const rawMin = startMinutes + relY / minutePx;
     const snapped = Math.round(rawMin / 15) * 15;
     return Math.max(startMinutes, Math.min(endMinutes - 15, snapped));
   }
@@ -506,8 +521,8 @@ export function WeekView({
     return {
       startTime: minutesToTimeStr(nextStart),
       durationMinutes,
-      topPx: minutesToPx(nextStart, startMinutes),
-      heightPx: Math.max(durationMinutes * MIN_PX, 20),
+      topPx: minutesToPx(nextStart, startMinutes, minutePx),
+      heightPx: Math.max(durationMinutes * minutePx, 20),
     };
   }
 
@@ -615,7 +630,7 @@ export function WeekView({
     if (!col) return;
     const rect = col.getBoundingClientRect();
     const clickY = e.clientY - rect.top;
-    const offsetMinutes = Math.max(0, (clickY - block.topPx) / MIN_PX);
+    const offsetMinutes = Math.max(0, (clickY - block.topPx) / minutePx);
     const longPressTimer = setTimeout(() => {
       const drag = activeDragRef.current;
       if (!drag || drag.started) return;
@@ -676,7 +691,7 @@ export function WeekView({
     const colEl = targetDate ? colRefs.current.get(targetDate) : null;
     if (!colEl || !targetDate) return;
     const totalMin = getSnappedMinutes(e.clientY, colEl, drag.offsetMinutes);
-    const topPx = minutesToPx(totalMin, startMinutes);
+    const topPx = minutesToPx(totalMin, startMinutes, minutePx);
     setDragGhost({
       topPx,
       heightPx: drag.block.heightPx,
@@ -733,7 +748,9 @@ export function WeekView({
         }
       }
       let hasConflict = false;
-      const dayAppts = allAppointments.filter((a) => a.date === targetDate);
+      const dayAppts = allAppointments.filter(
+        (a) => a.date === targetDate && isActiveAppointment(a),
+      );
       for (const existing of dayAppts) {
         if (existing.id === block.appt.id) continue;
         const existingActiveBlocks: { start: number; end: number }[] = [];
@@ -827,13 +844,15 @@ export function WeekView({
   }
 
   function buildBlocks(dateStr: string): RenderBlock[] {
-    const dayAppts = allAppointments.filter((a) => a.date === dateStr);
+    const dayAppts = allAppointments.filter(
+      (a) => a.date === dateStr && isActiveAppointment(a),
+    );
     const raw: Omit<RenderBlock, "leftPct" | "rightPct" | "zIdx">[] = [];
     for (const appt of dayAppts) {
       if (appt.phases.length === 0) {
         const apptStartMin = timeStrToMinutes(appt.startTime);
-        const topPx = minutesToPx(apptStartMin, startMinutes);
-        const heightPx = Math.max(appt.durationMinutes * MIN_PX, 20);
+        const topPx = minutesToPx(apptStartMin, startMinutes, minutePx);
+        const heightPx = Math.max(appt.durationMinutes * minutePx, 20);
         raw.push({
           appt,
           topPx,
@@ -846,8 +865,8 @@ export function WeekView({
       } else {
         for (const [i, phase] of appt.phases.entries()) {
           const phaseStartMin = getPhaseStartMinutes(phase);
-          const topPx = minutesToPx(phaseStartMin, startMinutes);
-          const heightPx = Math.max(phase.durationMinutes * MIN_PX, 20);
+          const topPx = minutesToPx(phaseStartMin, startMinutes, minutePx);
+          const heightPx = Math.max(phase.durationMinutes * minutePx, 20);
           const { label, isProcessing } = getBlockLabel(appt, i);
           raw.push({
             appt,
@@ -973,7 +992,7 @@ export function WeekView({
           const dayNum = date.getDate();
           const isLast = i === visibleDates.length - 1;
           const apptCount = allAppointments.filter(
-            (a) => a.date === dateStr,
+            (a) => a.date === dateStr && isActiveAppointment(a),
           ).length;
           return (
             <button
@@ -1047,7 +1066,7 @@ export function WeekView({
             {timeSlots.map((slot) => {
               const [sh, sm] = slot.split(":").map(Number);
               const slotMinutes = sh * 60 + sm;
-              const top = minutesToPx(slotMinutes, startMinutes);
+              const top = minutesToPx(slotMinutes, startMinutes, minutePx);
               const isHour = sm === 0;
               return (
                 <div
@@ -1115,7 +1134,11 @@ export function WeekView({
                         <div
                           className="absolute left-0 right-0 top-0 pointer-events-none z-[2]"
                           style={{
-                            height: minutesToPx(dayStartMin, startMinutes),
+                            height: minutesToPx(
+                              dayStartMin,
+                              startMinutes,
+                              minutePx,
+                            ),
                             backgroundColor: "rgba(0,0,0,0.12)",
                           }}
                         />
@@ -1124,7 +1147,7 @@ export function WeekView({
                         <div
                           className="absolute left-0 right-0 pointer-events-none z-[2]"
                           style={{
-                            top: minutesToPx(dayEndMin, startMinutes),
+                            top: minutesToPx(dayEndMin, startMinutes, minutePx),
                             bottom: 0,
                             backgroundColor: "rgba(0,0,0,0.12)",
                           }}
@@ -1137,7 +1160,7 @@ export function WeekView({
                 {/* Horizontal guide lines across ALL columns including today */}
                 {timeSlots.map((slot) => {
                   const [sh, sm] = slot.split(":").map(Number);
-                  const top = minutesToPx(sh * 60 + sm, startMinutes);
+                  const top = minutesToPx(sh * 60 + sm, startMinutes, minutePx);
                   const isHour = sm === 0;
                   return (
                     <div
@@ -1155,12 +1178,12 @@ export function WeekView({
                 {/* Clickable time slots — z-index 1 so appointment blocks win */}
                 {timeSlots.map((slot) => {
                   const [sh, sm] = slot.split(":").map(Number);
-                  const top = minutesToPx(sh * 60 + sm, startMinutes);
+                  const top = minutesToPx(sh * 60 + sm, startMinutes, minutePx);
                   return (
                     <div
                       key={slot}
                       className="absolute left-0 right-0 cursor-pointer hover:bg-accent/5 transition-colors"
-                      style={{ top, height: MIN_PX * 30, zIndex: 1 }}
+                      style={{ top, height: minutePx * 30, zIndex: 1 }}
                       role="button"
                       tabIndex={0}
                       onClick={(e) => {
@@ -1304,17 +1327,20 @@ export function WeekView({
             type="button"
             className="w-full text-left px-4 py-2.5 text-sm text-destructive hover:bg-muted transition-colors"
             onClick={() => {
-              const id = contextMenu.appointment.id;
-              deleteAppointment(id);
-              api.deleteAppointment(id).catch(console.error);
+              setCancelAppointment(contextMenu.appointment);
               setContextMenu(null);
             }}
             data-ocid="appointment.delete_button"
           >
-            Delete
+            Cancel / no-show
           </button>
         </div>
       )}
+
+      <AppointmentCancelModal
+        appointment={cancelAppointment}
+        onClose={() => setCancelAppointment(null)}
+      />
 
       {/* Drop confirmation dialog */}
       {dropConfirm && (

@@ -1,7 +1,14 @@
 import { useEffect, useState } from "react";
 import { useShallow } from "zustand/shallow";
-import * as api from "../../lib/api";
-import { dateToString, formatTime12, getMonthGrid, getWorkingScheduleForDate, hexToRgba } from "../../lib/utils";
+import AppointmentCancelModal from "../../components/AppointmentCancelModal";
+import { isActiveAppointment } from "../../lib/appointmentLifecycle";
+import {
+  dateToString,
+  formatTime12,
+  getMonthGrid,
+  getWorkingScheduleForDate,
+  hexToRgba,
+} from "../../lib/utils";
 import { useAppStore } from "../../store/useAppStore";
 import type { Appointment, AppointmentModalState } from "../../types";
 
@@ -22,20 +29,23 @@ const DAY_NAMES_MON = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const DAY_NAMES_SUN = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 export function MonthView({ year, month, onDayClick, onModalChange }: Props) {
-  const { settings, appointments, deleteAppointment } = useAppStore(
+  const { settings, appointments } = useAppStore(
     useShallow((s) => ({
       settings: s.settings,
       appointments: s.appointments,
-      deleteAppointment: s.deleteAppointment,
     })),
   );
   const _now = new Date();
   const todayStr = `${_now.getFullYear()}-${String(_now.getMonth() + 1).padStart(2, "0")}-${String(_now.getDate()).padStart(2, "0")}`;
   const [contextMenu, setContextMenu] = useState<ContextMenu | null>(null);
+  const [cancelAppointment, setCancelAppointment] =
+    useState<Appointment | null>(null);
 
   useEffect(() => {
     if (!contextMenu) return;
-    function handler() { setContextMenu(null); }
+    function handler() {
+      setContextMenu(null);
+    }
     document.addEventListener("click", handler);
     return () => document.removeEventListener("click", handler);
   }, [contextMenu]);
@@ -44,7 +54,9 @@ export function MonthView({ year, month, onDayClick, onModalChange }: Props) {
   const dayNames = settings.startWeekOnMonday ? DAY_NAMES_MON : DAY_NAMES_SUN;
 
   function getAppts(dateStr: string) {
-    return appointments.filter((a) => a.date === dateStr);
+    return appointments.filter(
+      (a) => a.date === dateStr && isActiveAppointment(a),
+    );
   }
 
   return (
@@ -73,7 +85,9 @@ export function MonthView({ year, month, onDayClick, onModalChange }: Props) {
           const dayAppts = getAppts(dateStr);
           const sched = getWorkingScheduleForDate(dateStr, settings);
           const isWorkingDay = sched.enabled;
-          const sortedAppts = [...dayAppts].sort((a, b) => a.startTime.localeCompare(b.startTime));
+          const sortedAppts = [...dayAppts].sort((a, b) =>
+            a.startTime.localeCompare(b.startTime),
+          );
           const visibleAppts = sortedAppts.slice(0, 3);
           const hiddenCount = sortedAppts.length - visibleAppts.length;
 
@@ -120,14 +134,24 @@ export function MonthView({ year, month, onDayClick, onModalChange }: Props) {
                   appt={appt}
                   onEdit={(e) => {
                     e.stopPropagation();
-                    onModalChange({ isOpen: true, mode: "edit", appointment: appt });
+                    onModalChange({
+                      isOpen: true,
+                      mode: "edit",
+                      appointment: appt,
+                    });
                   }}
                   onContextMenu={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
-                    setContextMenu({ x: e.clientX, y: e.clientY, appointment: appt });
+                    setContextMenu({
+                      x: e.clientX,
+                      y: e.clientY,
+                      appointment: appt,
+                    });
                   }}
-                  onLongPress={(x, y) => setContextMenu({ x, y, appointment: appt })}
+                  onLongPress={(x, y) =>
+                    setContextMenu({ x, y, appointment: appt })
+                  }
                 />
               ))}
               {hiddenCount > 0 && (
@@ -153,7 +177,11 @@ export function MonthView({ year, month, onDayClick, onModalChange }: Props) {
             type="button"
             className="w-full text-left px-4 py-2.5 text-sm hover:bg-muted transition-colors"
             onClick={() => {
-              onModalChange({ isOpen: true, mode: "edit", appointment: contextMenu.appointment });
+              onModalChange({
+                isOpen: true,
+                mode: "edit",
+                appointment: contextMenu.appointment,
+              });
               setContextMenu(null);
             }}
           >
@@ -163,16 +191,18 @@ export function MonthView({ year, month, onDayClick, onModalChange }: Props) {
             type="button"
             className="w-full text-left px-4 py-2.5 text-sm text-destructive hover:bg-muted transition-colors"
             onClick={() => {
-              const id = contextMenu.appointment.id;
-              deleteAppointment(id);
-              api.deleteAppointment(id).catch(console.error);
+              setCancelAppointment(contextMenu.appointment);
               setContextMenu(null);
             }}
           >
-            Delete
+            Cancel / no-show
           </button>
         </div>
       )}
+      <AppointmentCancelModal
+        appointment={cancelAppointment}
+        onClose={() => setCancelAppointment(null)}
+      />
     </div>
   );
 }
@@ -198,14 +228,25 @@ function MonthPill({
       onContextMenu={onContextMenu}
       onTouchStart={(e) => {
         const t = e.touches[0];
-        timerRef.current = setTimeout(() => onLongPress(t.clientX, t.clientY), 500);
+        timerRef.current = setTimeout(
+          () => onLongPress(t.clientX, t.clientY),
+          500,
+        );
       }}
-      onTouchEnd={() => { if (timerRef.current) clearTimeout(timerRef.current); }}
-      onTouchMove={() => { if (timerRef.current) clearTimeout(timerRef.current); }}
+      onTouchEnd={() => {
+        if (timerRef.current) clearTimeout(timerRef.current);
+      }}
+      onTouchMove={() => {
+        if (timerRef.current) clearTimeout(timerRef.current);
+      }}
       data-ocid="appointment.pill"
     >
-      <span className="text-[10px] font-bold leading-tight truncate">{appt.clientName}</span>
-      <span className="text-[9px] leading-tight opacity-75 truncate">{formatTime12(appt.startTime)} · {appt.serviceName}</span>
+      <span className="text-[10px] font-bold leading-tight truncate">
+        {appt.clientName}
+      </span>
+      <span className="text-[9px] leading-tight opacity-75 truncate">
+        {formatTime12(appt.startTime)} · {appt.serviceName}
+      </span>
     </button>
   );
 }

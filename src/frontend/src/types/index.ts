@@ -39,6 +39,13 @@ export interface ServiceInput {
 }
 
 // Appointment types
+export type AppointmentStatus =
+  | "scheduled"
+  | "completed"
+  | "canceled"
+  | "no_show"
+  | "rescheduled";
+
 export interface Appointment {
   id: string;
   clientName: string;
@@ -52,6 +59,9 @@ export interface Appointment {
   notes?: string;
   phases: PhaseInstance[];
   color: string; // hex from service
+  status?: AppointmentStatus;
+  statusReason?: string;
+  statusUpdatedAt?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -68,14 +78,17 @@ export interface AppointmentInput {
   notes?: string;
   phases: PhaseInstance[];
   color: string;
+  status?: AppointmentStatus;
+  statusReason?: string;
+  statusUpdatedAt?: string;
 }
 
 // Settings types
 export interface WorkingDaySchedule {
   enabled: boolean;
   start: string; // HH:MM
-  end: string;   // HH:MM
-  biweekly?: boolean;   // if true, alternates every other week
+  end: string; // HH:MM
+  biweekly?: boolean; // if true, alternates every other week
   biweeklyRef?: string; // YYYY-MM-DD of a known ON week
 }
 
@@ -83,6 +96,7 @@ export interface Settings {
   startWeekOnMonday: boolean;
   darkMode: boolean;
   mobileWeekLayout?: "three-day" | "full-week";
+  calendarDensity?: "comfortable" | "compact" | "dense";
   workingHoursStart: string; // HH:MM
   workingHoursEnd: string; // HH:MM
   workingDays?: {

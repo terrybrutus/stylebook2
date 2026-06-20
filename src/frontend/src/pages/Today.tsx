@@ -1,16 +1,23 @@
-import { CalendarCheck, MessageSquare, Plus, Scissors, TrendingUp } from "lucide-react";
+import {
+  CalendarCheck,
+  MessageSquare,
+  Plus,
+  Scissors,
+  TrendingUp,
+} from "lucide-react";
 import { useMemo, useState } from "react";
 import { useShallow } from "zustand/shallow";
 import AppointmentModal from "../components/AppointmentModal";
 import QuickRebook from "../components/QuickRebook";
+import { isActiveAppointment } from "../lib/appointmentLifecycle";
 import {
+  dateToString,
   formatDate,
   formatDuration,
   formatPrice,
   formatTime12,
   getTodayString,
   getWeekDates,
-  dateToString,
 } from "../lib/utils";
 import { useAppStore } from "../store/useAppStore";
 import type { Appointment } from "../types";
@@ -28,7 +35,10 @@ function findConflicts(appts: Appointment[]) {
       const b = appts[j];
       const aEnd = timeToMinutes(a.startTime) + a.durationMinutes;
       const bEnd = timeToMinutes(b.startTime) + b.durationMinutes;
-      if (timeToMinutes(a.startTime) < bEnd && timeToMinutes(b.startTime) < aEnd) {
+      if (
+        timeToMinutes(a.startTime) < bEnd &&
+        timeToMinutes(b.startTime) < aEnd
+      ) {
         pairs.push([a, b]);
       }
     }
@@ -39,24 +49,31 @@ function findConflicts(appts: Appointment[]) {
 export default function Today() {
   const today = getTodayString();
   const { allAppointments, settings } = useAppStore(
-    useShallow((s) => ({ allAppointments: s.appointments, settings: s.settings })),
+    useShallow((s) => ({
+      allAppointments: s.appointments,
+      settings: s.settings,
+    })),
   );
 
   const appointments = useMemo(
     () =>
       allAppointments
-        .filter((a) => a.date === today)
+        .filter((a) => a.date === today && isActiveAppointment(a))
         .sort((a, b) => a.startTime.localeCompare(b.startTime)),
     [allAppointments, today],
   );
 
   // Week stats
   const weekDates = useMemo(
-    () => getWeekDates(new Date(), settings.startWeekOnMonday).map(dateToString),
+    () =>
+      getWeekDates(new Date(), settings.startWeekOnMonday).map(dateToString),
     [settings.startWeekOnMonday],
   );
   const weekAppts = useMemo(
-    () => allAppointments.filter((a) => weekDates.includes(a.date)),
+    () =>
+      allAppointments.filter(
+        (a) => weekDates.includes(a.date) && isActiveAppointment(a),
+      ),
     [allAppointments, weekDates],
   );
   const weekRevenue = weekAppts.reduce((s, a) => s + a.price, 0);
@@ -64,7 +81,10 @@ export default function Today() {
   // Month stats
   const monthPrefix = today.slice(0, 7);
   const monthAppts = useMemo(
-    () => allAppointments.filter((a) => a.date.startsWith(monthPrefix)),
+    () =>
+      allAppointments.filter(
+        (a) => a.date.startsWith(monthPrefix) && isActiveAppointment(a),
+      ),
     [allAppointments, monthPrefix],
   );
   const monthRevenue = monthAppts.reduce((s, a) => s + a.price, 0);
@@ -135,12 +155,16 @@ export default function Today() {
           </button>
         </div>
         {appointments.length === 0 ? (
-          <p className="text-sm text-muted-foreground mt-0.5">No appointments today</p>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            No appointments today
+          </p>
         ) : (
           <p className="text-sm text-muted-foreground mt-0.5">
-            {appointments.length} appointment{appointments.length !== 1 ? "s" : ""} ·{" "}
+            {appointments.length} appointment
+            {appointments.length !== 1 ? "s" : ""} ·{" "}
             <span className="font-semibold text-accent ml-1">
-              ${appointments.reduce((sum, a) => sum + a.price, 0).toFixed(2)} projected
+              ${appointments.reduce((sum, a) => sum + a.price, 0).toFixed(2)}{" "}
+              projected
             </span>
           </p>
         )}
@@ -148,26 +172,37 @@ export default function Today() {
 
       {/* Scrollable content */}
       <div className="flex-1 overflow-auto">
-
         {/* Stats panel — week & month at a glance */}
         <div className="px-4 pt-3 pb-1" data-ocid="today.stats">
           <div className="flex items-center gap-1.5 mb-2">
             <TrendingUp size={13} className="text-muted-foreground" />
-            <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Revenue</span>
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+              Revenue
+            </span>
           </div>
           <div className="grid grid-cols-2 gap-2">
             <div className="rounded-xl border border-border bg-card px-3 py-2.5">
-              <p className="text-[10px] text-muted-foreground uppercase tracking-wide">This Week</p>
-              <p className="text-lg font-bold text-foreground mt-0.5">${weekRevenue.toFixed(0)}</p>
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wide">
+                This Week
+              </p>
+              <p className="text-lg font-bold text-foreground mt-0.5">
+                ${weekRevenue.toFixed(0)}
+              </p>
               <p className="text-[10px] text-muted-foreground mt-0.5">
-                {weekAppts.length} appointment{weekAppts.length !== 1 ? "s" : ""}
+                {weekAppts.length} appointment
+                {weekAppts.length !== 1 ? "s" : ""}
               </p>
             </div>
             <div className="rounded-xl border border-border bg-card px-3 py-2.5">
-              <p className="text-[10px] text-muted-foreground uppercase tracking-wide">This Month</p>
-              <p className="text-lg font-bold text-foreground mt-0.5">${monthRevenue.toFixed(0)}</p>
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wide">
+                This Month
+              </p>
+              <p className="text-lg font-bold text-foreground mt-0.5">
+                ${monthRevenue.toFixed(0)}
+              </p>
               <p className="text-[10px] text-muted-foreground mt-0.5">
-                {monthAppts.length} appointment{monthAppts.length !== 1 ? "s" : ""}
+                {monthAppts.length} appointment
+                {monthAppts.length !== 1 ? "s" : ""}
               </p>
             </div>
           </div>
@@ -183,8 +218,12 @@ export default function Today() {
               <div className="w-14 h-14 rounded-2xl bg-muted flex items-center justify-center mb-3">
                 <Scissors size={24} className="text-muted-foreground/50" />
               </div>
-              <h2 className="text-base font-semibold mb-1">No appointments today</h2>
-              <p className="text-sm text-muted-foreground mb-4">Tap + to add one.</p>
+              <h2 className="text-base font-semibold mb-1">
+                No appointments today
+              </h2>
+              <p className="text-sm text-muted-foreground mb-4">
+                Tap + to add one.
+              </p>
               <button
                 type="button"
                 onClick={openCreate}
@@ -215,9 +254,11 @@ export default function Today() {
             <p className="text-sm font-bold text-destructive mb-2">
               Scheduling Conflicts ({conflictPairs.length})
             </p>
-            {conflictPairs.map(([a, b], i) => (
-              // biome-ignore lint/suspicious/noArrayIndexKey: stable list of conflict pairs
-              <div key={i} className="text-xs text-destructive/80 flex flex-wrap gap-1 mb-1">
+            {conflictPairs.map(([a, b]) => (
+              <div
+                key={`${a.id}-${b.id}`}
+                className="text-xs text-destructive/80 flex flex-wrap gap-1 mb-1"
+              >
                 <button
                   type="button"
                   className="underline font-semibold"
@@ -261,7 +302,11 @@ export default function Today() {
 
       {/* Appointment Modal */}
       <AppointmentModal
-        key={modalState.isOpen ? `open-${rebookPrefill?.clientName ?? ""}` : "closed"}
+        key={
+          modalState.isOpen
+            ? `open-${rebookPrefill?.clientName ?? ""}`
+            : "closed"
+        }
         isOpen={modalState.isOpen}
         onClose={() => {
           closeModal();
@@ -311,14 +356,25 @@ function AppointmentCard({ appointment, index, onEdit }: AppointmentCardProps) {
 
         {/* Divider dot */}
         <div className="flex flex-col items-center pt-1 shrink-0">
-          <div className="w-2 h-2 rounded-full mt-0.5" style={{ backgroundColor: appointment.color }} />
-          <div className="w-px flex-1 mt-1" style={{ backgroundColor: `${appointment.color}40` }} />
+          <div
+            className="w-2 h-2 rounded-full mt-0.5"
+            style={{ backgroundColor: appointment.color }}
+          />
+          <div
+            className="w-px flex-1 mt-1"
+            style={{ backgroundColor: `${appointment.color}40` }}
+          />
         </div>
 
         {/* Content */}
         <div className="flex-1 min-w-0 pr-8">
-          <p className="font-bold text-sm leading-tight">{appointment.clientName}</p>
-          <p className="text-sm text-muted-foreground mt-0.5 break-words" style={{ wordBreak: "break-word", overflowWrap: "break-word" }}>
+          <p className="font-bold text-sm leading-tight">
+            {appointment.clientName}
+          </p>
+          <p
+            className="text-sm text-muted-foreground mt-0.5 break-words"
+            style={{ wordBreak: "break-word", overflowWrap: "break-word" }}
+          >
             {appointment.serviceName}
           </p>
           <p className="text-sm font-semibold text-accent mt-1">

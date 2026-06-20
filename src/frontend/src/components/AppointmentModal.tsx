@@ -16,6 +16,7 @@ import {
   getClientNames,
   updateAppointment,
 } from "../lib/api";
+import { isActiveAppointment } from "../lib/appointmentLifecycle";
 import {
   doBlocksOverlap,
   findAvailableSlots,
@@ -34,6 +35,7 @@ import type {
   PhaseInstance,
   Service,
 } from "../types";
+import AppointmentCancelModal from "./AppointmentCancelModal";
 
 interface Props {
   isOpen: boolean;
@@ -122,10 +124,9 @@ export default function AppointmentModal({
   const settings = useAppStore(useShallow((s) => s.settings));
   const addAppointment = useAppStore((s) => s.addAppointment);
   const storeUpdate = useAppStore((s) => s.updateAppointment);
-  const deleteAppointment = useAppStore((s) => s.deleteAppointment);
   const addClientContact = useAppStore((s) => s.addClientContact);
   const updateClientContact = useAppStore((s) => s.updateClientContact);
-  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [cancelTarget, setCancelTarget] = useState<Appointment | null>(null);
   const [form, setForm] = useState<FormState>(
     defaultForm(appointment, prefillDate, prefillTime, services),
   );
@@ -206,7 +207,7 @@ export default function AppointmentModal({
     setOutsideHoursWarning(null);
     setOutsideHoursConfirmed(false);
     setSubmitting(false);
-    setConfirmDelete(false);
+    setCancelTarget(null);
     setRecurEnabled(false);
     setRecurWeeks(1);
     setRecurCount(4);
@@ -514,6 +515,7 @@ export default function AppointmentModal({
     for (const existing of appointments) {
       if (mode === "edit" && appointment && existing.id === appointment.id)
         continue;
+      if (!isActiveAppointment(existing)) continue;
       if (existing.date !== form.date) continue;
 
       const existingBlocks =
@@ -1471,44 +1473,26 @@ export default function AppointmentModal({
                   : "Save Changes"}
             </Button>
           </div>
-          {mode === "edit" &&
-            appointment &&
-            (confirmDelete ? (
-              <div className="flex gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="flex-1 text-sm"
-                  onClick={() => setConfirmDelete(false)}
-                >
-                  Keep
-                </Button>
-                <Button
-                  type="button"
-                  variant="destructive"
-                  className="flex-1 text-sm"
-                  onClick={() => {
-                    deleteAppointment(appointment.id);
-                    onClose();
-                  }}
-                  data-ocid="appointment.confirm_delete_button"
-                >
-                  Confirm Delete
-                </Button>
-              </div>
-            ) : (
-              <Button
-                type="button"
-                variant="ghost"
-                className="w-full text-destructive hover:bg-destructive/10 text-sm"
-                onClick={() => setConfirmDelete(true)}
-                data-ocid="appointment.delete_button"
-              >
-                Delete Appointment
-              </Button>
-            ))}
+          {mode === "edit" && appointment && (
+            <Button
+              type="button"
+              variant="ghost"
+              className="w-full text-destructive hover:bg-destructive/10 text-sm"
+              onClick={() => setCancelTarget(appointment)}
+              data-ocid="appointment.delete_button"
+            >
+              Cancel / no-show appointment
+            </Button>
+          )}
         </div>
       </div>
+      <AppointmentCancelModal
+        appointment={cancelTarget}
+        onClose={() => {
+          setCancelTarget(null);
+          onClose();
+        }}
+      />
     </dialog>
   );
 }

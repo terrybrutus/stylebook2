@@ -19,6 +19,10 @@ import type {
   ServiceInput,
   Settings,
 } from "../types";
+import {
+  buildAppointmentNotesWithMeta,
+  splitAppointmentNotes,
+} from "./appointmentLifecycle";
 import { DEFAULT_SERVICES } from "./defaultServices";
 
 // Local storage keys (fallback only)
@@ -40,6 +44,17 @@ function loadJSON<T>(key: string, fallback: T): T {
 
 function saveJSON(key: string, data: unknown): void {
   localStorage.setItem(key, JSON.stringify(data));
+}
+
+function normalizeStoredAppointment(appointment: Appointment): Appointment {
+  const notesMeta = splitAppointmentNotes(appointment.notes);
+  return {
+    ...appointment,
+    notes: notesMeta.notes,
+    status: appointment.status ?? notesMeta.status,
+    statusReason: appointment.statusReason ?? notesMeta.statusReason,
+    statusUpdatedAt: appointment.statusUpdatedAt ?? notesMeta.statusUpdatedAt,
+  };
 }
 
 // ─── Actor singleton ─────────────────────────────────────────────────────────
@@ -69,11 +84,14 @@ export function initCanisterId(id: string): void {
 
 function getActor(): ActorInstance {
   if (!_actorInstance) {
-    const canisterId = _canisterId
-      ?? (import.meta.env.CANISTER_BACKEND as string | undefined)
-      ?? (import.meta.env.VITE_CANISTER_ID_BACKEND as string | undefined);
+    const canisterId =
+      _canisterId ??
+      (import.meta.env.CANISTER_BACKEND as string | undefined) ??
+      (import.meta.env.VITE_CANISTER_ID_BACKEND as string | undefined);
     if (!canisterId || canisterId === "undefined") {
-      throw new Error("[StyleBook] CANISTER_BACKEND is not set — ICP unavailable");
+      throw new Error(
+        "[StyleBook] CANISTER_BACKEND is not set — ICP unavailable",
+      );
     }
     _actorInstance = createActor(canisterId, noopUpload, noopDownload);
   }
@@ -127,8 +145,9 @@ function mapBackendAppointment(
   serviceMap: Map<string, Service>,
 ): Appointment {
   const svc = serviceMap.get(a.serviceId);
+  const notesMeta = splitAppointmentNotes(a.notes);
   // Recompute phase start times from appointment start since backend doesn't store them
-  const phases = (a.phases ?? []);
+  const phases = a.phases ?? [];
   let cursor = (() => {
     const [h, m] = a.startTime.split(":").map(Number);
     return h * 60 + m;
@@ -150,9 +169,12 @@ function mapBackendAppointment(
     durationMinutes: Number(a.durationMinutes),
     price: a.price,
     phoneNumber: a.phone,
-    notes: a.notes,
+    notes: notesMeta.notes,
     phases: mappedPhases,
     color: svc?.color ?? "#888888",
+    status: notesMeta.status,
+    statusReason: notesMeta.statusReason,
+    statusUpdatedAt: notesMeta.statusUpdatedAt,
     createdAt: "",
     updatedAt: "",
   };
@@ -190,11 +212,19 @@ export async function getAppointments(): Promise<Appointment[]> {
     const services = await getServices();
     const serviceMap = new Map(services.map((s) => [s.id, s]));
     const appts = await actor.getAppointments();
-    console.log("[StyleBook] ICP getAppointments: success, count=", appts.length);
+    console.log(
+      "[StyleBook] ICP getAppointments: success, count=",
+      appts.length,
+    );
     return appts.map((a) => mapBackendAppointment(a, serviceMap));
   } catch (err) {
-    console.error("[StyleBook] ICP getAppointments FAILED — falling back to localStorage:", err);
-    return loadJSON<Appointment[]>(KEYS.appointments, []);
+    console.error(
+      "[StyleBook] ICP getAppointments FAILED — falling back to localStorage:",
+      err,
+    );
+    return loadJSON<Appointment[]>(KEYS.appointments, []).map(
+      normalizeStoredAppointment,
+    );
   }
 }
 
@@ -209,7 +239,9 @@ export async function getAppointmentsByDateRange(
     const appts = await actor.getAppointmentsByDateRange(startDate, endDate);
     return appts.map((a) => mapBackendAppointment(a, serviceMap));
   } catch {
-    const all = loadJSON<Appointment[]>(KEYS.appointments, []);
+    const all = loadJSON<Appointment[]>(KEYS.appointments, []).map(
+      normalizeStoredAppointment,
+    );
     return all.filter((a) => a.date >= startDate && a.date <= endDate);
   }
 }
@@ -224,7 +256,9 @@ export async function getAppointmentsByClient(
     const appts = await actor.getAppointmentsByClient(clientName);
     return appts.map((a) => mapBackendAppointment(a, serviceMap));
   } catch {
-    const all = loadJSON<Appointment[]>(KEYS.appointments, []);
+    const all = loadJSON<Appointment[]>(KEYS.appointments, []).map(
+      normalizeStoredAppointment,
+    );
     return all.filter((a) =>
       a.clientName.toLowerCase().includes(clientName.toLowerCase()),
     );
@@ -236,7 +270,9 @@ export async function getClientNames(): Promise<string[]> {
     const actor = getActor();
     return await actor.getClientNames();
   } catch {
-    const all = loadJSON<Appointment[]>(KEYS.appointments, []);
+    const all = loadJSON<Appointment[]>(KEYS.appointments, []).map(
+      normalizeStoredAppointment,
+    );
     return [...new Set(all.map((a) => a.clientName))].sort();
   }
 }
@@ -257,7 +293,7 @@ export async function createAppointment(
       durationMinutes: BigInt(input.durationMinutes),
       price: input.price,
       phone: input.phoneNumber,
-      notes: input.notes,
+      notes: buildAppointmentNotesWithMeta(input.notes, input),
       phases:
         input.phases.length > 0
           ? input.phases.map(toBackendPhaseInstance)
@@ -266,11 +302,17 @@ export async function createAppointment(
     console.log("[StyleBook] ICP createAppointment: success, id=", result.id);
     return mapBackendAppointment(result, serviceMap);
   } catch (err) {
-    console.error("[StyleBook] ICP createAppointment FAILED — falling back to localStorage:", err);
-    const all = loadJSON<Appointment[]>(KEYS.appointments, []);
+    console.error(
+      "[StyleBook] ICP createAppointment FAILED — falling back to localStorage:",
+      err,
+    );
+    const all = loadJSON<Appointment[]>(KEYS.appointments, []).map(
+      normalizeStoredAppointment,
+    );
     const now = new Date().toISOString();
     const appointment: Appointment = {
       ...input,
+      status: input.status ?? "scheduled",
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
       createdAt: now,
       updatedAt: now,
@@ -302,7 +344,7 @@ export async function updateAppointment(
       durationMinutes: BigInt(merged.durationMinutes),
       price: merged.price,
       phone: merged.phoneNumber,
-      notes: merged.notes,
+      notes: buildAppointmentNotesWithMeta(merged.notes, merged),
       phases:
         merged.phases && merged.phases.length > 0
           ? merged.phases.map(toBackendPhaseInstance)
@@ -311,12 +353,15 @@ export async function updateAppointment(
     if (!result) throw new Error(`Update failed for appointment ${id}`);
     return mapBackendAppointment(result, serviceMap);
   } catch {
-    const all = loadJSON<Appointment[]>(KEYS.appointments, []);
+    const all = loadJSON<Appointment[]>(KEYS.appointments, []).map(
+      normalizeStoredAppointment,
+    );
     const idx = all.findIndex((a) => a.id === id);
     if (idx === -1) throw new Error(`Appointment ${id} not found`);
     const updated: Appointment = {
       ...all[idx],
       ...input,
+      status: input.status ?? all[idx].status ?? "scheduled",
       updatedAt: new Date().toISOString(),
     };
     all[idx] = updated;
@@ -344,14 +389,20 @@ export async function getServices(): Promise<Service[]> {
   try {
     const actor = getActor();
     const services = await actor.getServices();
-    console.log("[StyleBook] ICP getServices: success, count=", services.length);
+    console.log(
+      "[StyleBook] ICP getServices: success, count=",
+      services.length,
+    );
     if (services.length === 0) {
       await seedDefaultServices(actor);
       return DEFAULT_SERVICES;
     }
     return services.map(mapBackendService);
   } catch (err) {
-    console.error("[StyleBook] ICP getServices FAILED — falling back to localStorage:", err);
+    console.error(
+      "[StyleBook] ICP getServices FAILED — falling back to localStorage:",
+      err,
+    );
     const stored = loadJSON<Service[] | null>(KEYS.services, null);
     if (!stored) {
       saveJSON(KEYS.services, DEFAULT_SERVICES);
@@ -363,9 +414,16 @@ export async function getServices(): Promise<Service[]> {
 
 async function seedDefaultServices(actor: ActorInstance): Promise<void> {
   for (const svc of DEFAULT_SERVICES) {
-    const backendPhases = svc.category === "single"
-      ? [{ phaseLabel: svc.name, durationMinutes: BigInt(svc.totalDurationMinutes ?? 0), phaseType: toBackendPhaseType("active") }]
-      : svc.phases.map(toBackendPhaseDef);
+    const backendPhases =
+      svc.category === "single"
+        ? [
+            {
+              phaseLabel: svc.name,
+              durationMinutes: BigInt(svc.totalDurationMinutes ?? 0),
+              phaseType: toBackendPhaseType("active"),
+            },
+          ]
+        : svc.phases.map(toBackendPhaseDef);
     await actor.createService({
       name: svc.name,
       isMultiPhase: svc.category === "multi",
@@ -382,9 +440,16 @@ export async function createService(input: ServiceInput): Promise<Service> {
     const actor = getActor();
     // Single-phase services have no phase definitions — store a synthetic phase so ICP
     // can compute totalDurationMinutes (it sums phases; an empty array → 0).
-    const backendPhases = input.category === "single"
-      ? [{ phaseLabel: input.name, durationMinutes: BigInt(input.totalDurationMinutes ?? 0), phaseType: toBackendPhaseType("active") }]
-      : input.phases.map(toBackendPhaseDef);
+    const backendPhases =
+      input.category === "single"
+        ? [
+            {
+              phaseLabel: input.name,
+              durationMinutes: BigInt(input.totalDurationMinutes ?? 0),
+              phaseType: toBackendPhaseType("active"),
+            },
+          ]
+        : input.phases.map(toBackendPhaseDef);
     const result = await actor.createService({
       name: input.name,
       isMultiPhase: input.category === "multi",
@@ -416,9 +481,16 @@ export async function updateService(
     const current = services.find((s) => s.id === id);
     if (!current) throw new Error(`Service ${id} not found`);
     const merged = { ...current, ...input };
-    const backendPhases = merged.category === "single"
-      ? [{ phaseLabel: merged.name, durationMinutes: BigInt(merged.totalDurationMinutes ?? 0), phaseType: toBackendPhaseType("active") }]
-      : merged.phases.map(toBackendPhaseDef);
+    const backendPhases =
+      merged.category === "single"
+        ? [
+            {
+              phaseLabel: merged.name,
+              durationMinutes: BigInt(merged.totalDurationMinutes ?? 0),
+              phaseType: toBackendPhaseType("active"),
+            },
+          ]
+        : merged.phases.map(toBackendPhaseDef);
     const result = await actor.updateService({
       id,
       name: merged.name,
@@ -460,6 +532,7 @@ const DEFAULT_SETTINGS: Settings = {
   startWeekOnMonday: true,
   darkMode: false,
   mobileWeekLayout: "three-day",
+  calendarDensity: "compact",
   workingHoursStart: "08:00",
   workingHoursEnd: "19:00",
 };
@@ -475,10 +548,9 @@ export async function getSettings(): Promise<Settings> {
     return {
       startWeekOnMonday: snap.startWeekOnMonday,
       darkMode: localDarkMode,
-      mobileWeekLayout: loadJSON<Settings>(
-        KEYS.settings,
-        DEFAULT_SETTINGS,
-      ).mobileWeekLayout ?? "three-day",
+      mobileWeekLayout:
+        loadJSON<Settings>(KEYS.settings, DEFAULT_SETTINGS).mobileWeekLayout ??
+        "three-day",
       workingHoursStart: snap.workingHoursStart,
       workingHoursEnd: snap.workingHoursEnd,
     };
