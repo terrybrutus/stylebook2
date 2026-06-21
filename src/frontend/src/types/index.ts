@@ -101,6 +101,7 @@ export interface Settings {
   darkMode: boolean;
   mobileWeekLayout?: "three-day" | "full-week";
   calendarDensity?: "comfortable" | "compact" | "dense";
+  blockedTimeColor?: string;
   workingHoursStart: string; // HH:MM
   workingHoursEnd: string; // HH:MM
   workingDays?: {

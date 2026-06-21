@@ -3,6 +3,7 @@ import { useShallow } from "zustand/shallow";
 import AppointmentCancelModal from "../../components/AppointmentCancelModal";
 import * as api from "../../lib/api";
 import {
+  DEFAULT_BLOCKED_TIME_COLOR,
   getCalendarHourPx,
   isActiveAppointment,
   isBlockedTime,
@@ -54,6 +55,7 @@ function recalcPhaseStarts(
 interface Props {
   anchorDate: Date;
   onModalChange: (state: AppointmentModalState) => void;
+  onSlotSelect?: (date: string, time: string) => void;
   onDayClick?: (date: string) => void;
   onWeekChange?: (dir: 1 | -1) => void;
 }
@@ -107,6 +109,7 @@ function getBlockLabel(
 export function WeekView({
   anchorDate,
   onModalChange,
+  onSlotSelect,
   onDayClick,
   onWeekChange,
 }: Props) {
@@ -124,6 +127,8 @@ export function WeekView({
 
   const { startHour, endHour } = getEffectiveGridHours(settings);
   const minutePx = getCalendarHourPx(settings) / 60;
+  const blockedTimeColor =
+    settings.blockedTimeColor ?? DEFAULT_BLOCKED_TIME_COLOR;
   const startMinutes = startHour * 60;
   const endMinutes = endHour * 60;
   const totalMinutes = endMinutes - startMinutes;
@@ -258,6 +263,10 @@ export function WeekView({
   const handleSlotClick = useCallback(
     (dateStr: string, slot: string) => {
       if (Date.now() < suppressTapUntilRef.current) return;
+      if (onSlotSelect) {
+        onSlotSelect(dateStr, slot);
+        return;
+      }
       onModalChange({
         isOpen: true,
         mode: "create",
@@ -265,7 +274,7 @@ export function WeekView({
         prefillTime: slot,
       });
     },
-    [onModalChange],
+    [onModalChange, onSlotSelect],
   );
 
   const handleContextMenu = useCallback(
@@ -915,6 +924,7 @@ export function WeekView({
       if (!apptColorOrder.has(id)) apptColorOrder.set(id, overlapOrder[i]);
     }
     const displayColors = raw.map((b) => {
+      if (isBlockedTime(b.appt)) return blockedTimeColor;
       const order = apptColorOrder.get(b.appt.id) ?? 0;
       if (order === 0) return b.color;
       return hueRotate(b.color, HUE_OFFSETS[order % HUE_OFFSETS.length]);
@@ -1541,7 +1551,7 @@ function WeekBlock({
         ) : isShort ? (
           // Short block (<50px): client name only, no truncation
           <span
-            className={`${compact ? "text-[8px]" : "text-[10px]"} font-bold leading-tight text-foreground`}
+            className={`${compact ? "text-[8px]" : "text-[10px]"} font-bold leading-tight ${isBlocked ? "text-white" : "text-foreground"}`}
             style={{ wordBreak: "break-word", overflowWrap: "break-word" }}
           >
             {isBlocked ? label : appt.clientName}
@@ -1550,20 +1560,27 @@ function WeekBlock({
           // Full block: client name, service name, duration · price
           <>
             <span
-              className={`${compact ? "text-[8px]" : "text-[10px]"} font-bold leading-tight text-foreground`}
+              className={`${compact ? "text-[8px]" : "text-[10px]"} font-bold leading-tight ${isBlocked ? "text-white" : "text-foreground"}`}
               style={{ wordBreak: "break-word", overflowWrap: "break-word" }}
             >
               {isBlocked ? label : appt.clientName}
             </span>
+            {!isBlocked && (
+              <span
+                className="text-[9px] text-foreground/80 leading-tight mt-0.5"
+                style={{
+                  wordBreak: "break-word",
+                  overflowWrap: "break-word",
+                }}
+              >
+                {appt.serviceName}
+              </span>
+            )}
             <span
-              className="text-[9px] text-foreground/80 leading-tight mt-0.5"
-              style={{ wordBreak: "break-word", overflowWrap: "break-word" }}
+              className={`text-[9px] mt-0.5 ${isBlocked ? "text-white/85" : "text-foreground/70"}`}
             >
-              {appt.serviceName}
-            </span>
-            <span className="text-[9px] text-foreground/70 mt-0.5">
-              {formatDuration(appt.durationMinutes)} · $
-              {formatPrice(appt.price)}
+              {formatDuration(appt.durationMinutes)}
+              {!isBlocked && <> &middot; ${formatPrice(appt.price)}</>}
             </span>
           </>
         )}

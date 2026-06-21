@@ -3,6 +3,7 @@ import { useShallow } from "zustand/shallow";
 import AppointmentCancelModal from "../../components/AppointmentCancelModal";
 import * as api from "../../lib/api";
 import {
+  DEFAULT_BLOCKED_TIME_COLOR,
   getCalendarHourPx,
   isActiveAppointment,
   isBlockedTime,
@@ -42,6 +43,7 @@ function recalcPhaseStarts(
 interface Props {
   date: string; // YYYY-MM-DD
   onModalChange: (state: AppointmentModalState) => void;
+  onSlotSelect?: (date: string, time: string) => void;
 }
 
 interface ContextMenu {
@@ -105,7 +107,7 @@ type RenderBlock = {
 
 type ResizeEdge = "top" | "bottom";
 
-export function DayView({ date, onModalChange }: Props) {
+export function DayView({ date, onModalChange, onSlotSelect }: Props) {
   const { settings, allAppointments, deleteAppointment, updateAppointment } =
     useAppStore(
       useShallow((s) => ({
@@ -125,6 +127,8 @@ export function DayView({ date, onModalChange }: Props) {
 
   const { startHour, endHour } = getEffectiveGridHours(settings);
   const HOUR_PX = getCalendarHourPx(settings);
+  const blockedTimeColor =
+    settings.blockedTimeColor ?? DEFAULT_BLOCKED_TIME_COLOR;
   const minutePx = HOUR_PX / 60;
   const timeToLocalPixels = (time: string) => {
     const [h, m] = time.split(":").map(Number);
@@ -209,6 +213,10 @@ export function DayView({ date, onModalChange }: Props) {
 
   const handleSlotClick = useCallback(
     (slot: string) => {
+      if (onSlotSelect) {
+        onSlotSelect(date, slot);
+        return;
+      }
       onModalChange({
         isOpen: true,
         mode: "create",
@@ -216,7 +224,7 @@ export function DayView({ date, onModalChange }: Props) {
         prefillTime: slot,
       });
     },
-    [date, onModalChange],
+    [date, onModalChange, onSlotSelect],
   );
 
   const handleApptContextMenu = useCallback(
@@ -635,6 +643,7 @@ export function DayView({ date, onModalChange }: Props) {
     if (!apptColorOrder.has(id)) apptColorOrder.set(id, overlapOrder[i]);
   }
   const displayColors = rawBlocks.map((b) => {
+    if (isBlockedTime(b.appt)) return blockedTimeColor;
     const order = apptColorOrder.get(b.appt.id) ?? 0;
     if (order === 0) return b.color;
     return hueRotate(b.color, HUE_OFFSETS[order % HUE_OFFSETS.length]);
@@ -1071,15 +1080,20 @@ function AppointmentBlock({
         ) : (
           <>
             <span
-              className="text-[11px] font-bold leading-tight text-foreground break-words"
+              className={`text-[11px] font-bold leading-tight break-words ${isBlocked ? "text-white" : "text-foreground"}`}
               style={{ wordBreak: "break-word", overflowWrap: "break-word" }}
             >
               {label}
             </span>
-            {!isShort && (
+            {!isShort && !isBlocked && (
               <span className="text-[10px] text-foreground/70 mt-0.5">
                 {formatDuration(appt.durationMinutes)} · $
                 {formatPrice(appt.price)}
+              </span>
+            )}
+            {!isShort && isBlocked && (
+              <span className="text-[10px] text-white/85 mt-0.5">
+                {formatDuration(appt.durationMinutes)}
               </span>
             )}
           </>

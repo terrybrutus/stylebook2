@@ -1,9 +1,9 @@
 import { Button } from "@/components/ui/button";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import * as api from "../lib/api";
 import {
-  BLOCKED_TIME_COLOR,
   BLOCKED_TIME_SERVICE_ID,
+  DEFAULT_BLOCKED_TIME_COLOR,
 } from "../lib/appointmentLifecycle";
 import { useAppStore } from "../store/useAppStore";
 
@@ -33,12 +33,24 @@ export default function BlockTimeModal({
   onClose,
 }: Props) {
   const addAppointment = useAppStore((s) => s.addAppointment);
+  const blockedTimeColor = useAppStore(
+    (s) => s.settings.blockedTimeColor ?? DEFAULT_BLOCKED_TIME_COLOR,
+  );
   const [title, setTitle] = useState("Lunch");
   const [localDate, setLocalDate] = useState(date);
   const [start, setStart] = useState(startTime);
   const [end, setEnd] = useState(addMinutes(startTime, 60));
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setLocalDate(date);
+    setStart(startTime);
+    setEnd(addMinutes(startTime, 60));
+    setTitle("Lunch");
+    setNotes("");
+  }, [date, isOpen, startTime]);
 
   if (!isOpen) return null;
 
@@ -60,7 +72,7 @@ export default function BlockTimeModal({
         phoneNumber: undefined,
         notes: notes.trim() || undefined,
         phases: [],
-        color: BLOCKED_TIME_COLOR,
+        color: blockedTimeColor,
         status: "scheduled",
         isBlockedTime: true,
         blockReason: title.trim(),

@@ -81,6 +81,7 @@ const DEFAULT_SETTINGS: Settings = {
   darkMode: false,
   mobileWeekLayout: "three-day",
   calendarDensity: "compact",
+  blockedTimeColor: "#6F472F",
   workingHoursStart: "07:00",
   workingHoursEnd: "19:00",
   workingDays: {

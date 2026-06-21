@@ -18,7 +18,7 @@ export const INACTIVE_APPOINTMENT_STATUSES = new Set<AppointmentStatus>([
 ]);
 
 export const BLOCKED_TIME_SERVICE_ID = "__stylebook_blocked_time__";
-export const BLOCKED_TIME_COLOR = "#8B5A2B";
+export const DEFAULT_BLOCKED_TIME_COLOR = "#6F472F";
 
 export function normalizeAppointmentStatus(status?: string): AppointmentStatus {
   if (

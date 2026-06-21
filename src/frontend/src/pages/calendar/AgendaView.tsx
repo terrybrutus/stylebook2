@@ -1,5 +1,6 @@
 import { useShallow } from "zustand/shallow";
 import {
+  DEFAULT_BLOCKED_TIME_COLOR,
   isActiveAppointment,
   isBlockedTime,
 } from "../../lib/appointmentLifecycle";
@@ -20,7 +21,14 @@ interface Props {
 
 // Group appointments by date and show in chronological list
 export function AgendaView({ anchorDate, onModalChange }: Props) {
-  const appointments = useAppStore(useShallow((s) => s.appointments));
+  const { appointments, settings } = useAppStore(
+    useShallow((s) => ({
+      appointments: s.appointments,
+      settings: s.settings,
+    })),
+  );
+  const blockedTimeColor =
+    settings.blockedTimeColor ?? DEFAULT_BLOCKED_TIME_COLOR;
 
   // Show 60 days forward and 14 days back from anchor
   const start = new Date(`${anchorDate}T00:00:00`);
@@ -107,6 +115,7 @@ export function AgendaView({ anchorDate, onModalChange }: Props) {
                   key={appt.id}
                   appt={appt}
                   isPast={isPast}
+                  blockedTimeColor={blockedTimeColor}
                   onEdit={() =>
                     onModalChange({
                       isOpen: true,
@@ -128,13 +137,16 @@ export function AgendaView({ anchorDate, onModalChange }: Props) {
 function AgendaRow({
   appt,
   isPast,
+  blockedTimeColor,
   onEdit,
 }: {
   appt: Appointment;
   isPast: boolean;
+  blockedTimeColor: string;
   onEdit: () => void;
 }) {
   const blocked = isBlockedTime(appt);
+  const displayColor = blocked ? blockedTimeColor : appt.color;
   return (
     <button
       type="button"
@@ -145,7 +157,7 @@ function AgendaRow({
       {/* Color stripe */}
       <div
         className="w-1 self-stretch rounded-full flex-shrink-0 min-h-[36px]"
-        style={{ backgroundColor: appt.color }}
+        style={{ backgroundColor: displayColor }}
       />
 
       {/* Time */}
@@ -184,7 +196,7 @@ function AgendaRow({
         )}
         <span
           className="w-3 h-3 rounded-full"
-          style={{ backgroundColor: hexToRgba(appt.color, 0.8) }}
+          style={{ backgroundColor: hexToRgba(displayColor, 0.8) }}
         />
       </div>
     </button>

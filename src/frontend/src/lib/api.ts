@@ -20,8 +20,8 @@ import type {
   Settings,
 } from "../types";
 import {
-  BLOCKED_TIME_COLOR,
   BLOCKED_TIME_SERVICE_ID,
+  DEFAULT_BLOCKED_TIME_COLOR,
   buildAppointmentNotesWithMeta,
   splitAppointmentNotes,
 } from "./appointmentLifecycle";
@@ -179,7 +179,7 @@ function mapBackendAppointment(
     phoneNumber: a.phone,
     notes: notesMeta.notes,
     phases: mappedPhases,
-    color: isBlocked ? BLOCKED_TIME_COLOR : (svc?.color ?? "#888888"),
+    color: isBlocked ? DEFAULT_BLOCKED_TIME_COLOR : (svc?.color ?? "#888888"),
     status: notesMeta.status,
     statusReason: notesMeta.statusReason,
     statusUpdatedAt: notesMeta.statusUpdatedAt,
@@ -547,6 +547,7 @@ const DEFAULT_SETTINGS: Settings = {
   darkMode: false,
   mobileWeekLayout: "three-day",
   calendarDensity: "compact",
+  blockedTimeColor: DEFAULT_BLOCKED_TIME_COLOR,
   workingHoursStart: "08:00",
   workingHoursEnd: "19:00",
 };
@@ -565,6 +566,9 @@ export async function getSettings(): Promise<Settings> {
       mobileWeekLayout:
         loadJSON<Settings>(KEYS.settings, DEFAULT_SETTINGS).mobileWeekLayout ??
         "three-day",
+      blockedTimeColor:
+        loadJSON<Settings>(KEYS.settings, DEFAULT_SETTINGS).blockedTimeColor ??
+        DEFAULT_BLOCKED_TIME_COLOR,
       workingHoursStart: snap.workingHoursStart,
       workingHoursEnd: snap.workingHoursEnd,
     };

@@ -3,6 +3,7 @@ import { useShallow } from "zustand/shallow";
 import AppointmentCancelModal from "../../components/AppointmentCancelModal";
 import * as api from "../../lib/api";
 import {
+  DEFAULT_BLOCKED_TIME_COLOR,
   isActiveAppointment,
   isBlockedTime,
 } from "../../lib/appointmentLifecycle";
@@ -57,6 +58,8 @@ export function MonthView({ year, month, onDayClick, onModalChange }: Props) {
 
   const grid = getMonthGrid(year, month, settings.startWeekOnMonday);
   const dayNames = settings.startWeekOnMonday ? DAY_NAMES_MON : DAY_NAMES_SUN;
+  const blockedTimeColor =
+    settings.blockedTimeColor ?? DEFAULT_BLOCKED_TIME_COLOR;
 
   function getAppts(dateStr: string) {
     return appointments.filter(
@@ -137,6 +140,7 @@ export function MonthView({ year, month, onDayClick, onModalChange }: Props) {
                 <MonthPill
                   key={appt.id}
                   appt={appt}
+                  blockedTimeColor={blockedTimeColor}
                   onEdit={(e) => {
                     e.stopPropagation();
                     if (isBlockedTime(appt)) {
@@ -236,21 +240,28 @@ export function MonthView({ year, month, onDayClick, onModalChange }: Props) {
 
 function MonthPill({
   appt,
+  blockedTimeColor,
   onEdit,
   onContextMenu,
   onLongPress,
 }: {
   appt: Appointment;
+  blockedTimeColor: string;
   onEdit: (e: React.MouseEvent) => void;
   onContextMenu: (e: React.MouseEvent) => void;
   onLongPress: (x: number, y: number) => void;
 }) {
   const timerRef = { current: null as ReturnType<typeof setTimeout> | null };
+  const blocked = isBlockedTime(appt);
+  const pillColor = blocked ? blockedTimeColor : appt.color;
   return (
     <button
       type="button"
       className="rounded px-1.5 py-1 text-left w-full cursor-pointer hover:opacity-90 flex flex-col gap-0"
-      style={{ backgroundColor: hexToRgba(appt.color, 0.8), color: "#222" }}
+      style={{
+        backgroundColor: blocked ? pillColor : hexToRgba(pillColor, 0.8),
+        color: blocked ? "#fff" : "#222",
+      }}
       onClick={onEdit}
       onContextMenu={onContextMenu}
       onTouchStart={(e) => {
@@ -269,7 +280,7 @@ function MonthPill({
       data-ocid="appointment.pill"
     >
       <span className="text-[10px] font-bold leading-tight truncate">
-        {appt.clientName}
+        {blocked ? (appt.blockReason ?? appt.clientName) : appt.clientName}
       </span>
       <span className="text-[9px] leading-tight opacity-75 truncate">
         {formatTime12(appt.startTime)} · {appt.serviceName}

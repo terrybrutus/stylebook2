@@ -14,6 +14,7 @@ import { useTheme } from "next-themes";
 import { useRef, useState } from "react";
 import { useShallow } from "zustand/shallow";
 import * as api from "../lib/api";
+import { DEFAULT_BLOCKED_TIME_COLOR } from "../lib/appointmentLifecycle";
 import {
   type CsvAppointmentRow,
   type ParsedBackupImport,
@@ -686,6 +687,47 @@ export default function Settings() {
                 </div>
                 <Toggle checked={settings.darkMode} />
               </button>
+              <div className="border-t border-border px-4 py-3.5">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium">Blocked time color</p>
+                    <p className="text-xs text-muted-foreground">
+                      Used for unavailable blocks on the calendar
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="color"
+                      value={
+                        settings.blockedTimeColor ?? DEFAULT_BLOCKED_TIME_COLOR
+                      }
+                      onChange={(e) => {
+                        updateSettings({ blockedTimeColor: e.target.value });
+                        api.updateSettings({
+                          blockedTimeColor: e.target.value,
+                        });
+                      }}
+                      className="h-9 w-12 rounded border border-input bg-background"
+                      data-ocid="settings.blocked_time_color"
+                      aria-label="Blocked time color"
+                    />
+                    <button
+                      type="button"
+                      className="text-xs text-muted-foreground hover:text-foreground"
+                      onClick={() => {
+                        updateSettings({
+                          blockedTimeColor: DEFAULT_BLOCKED_TIME_COLOR,
+                        });
+                        api.updateSettings({
+                          blockedTimeColor: DEFAULT_BLOCKED_TIME_COLOR,
+                        });
+                      }}
+                    >
+                      Reset
+                    </button>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
 
