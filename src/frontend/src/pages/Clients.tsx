@@ -18,7 +18,7 @@ import * as api from "../lib/api";
 import {
   APPOINTMENT_STATUS_LABELS,
   isActiveAppointment,
-  isClientAppointment,
+  isBlockedTime,
   normalizeAppointmentStatus,
 } from "../lib/appointmentLifecycle";
 import {
@@ -204,7 +204,9 @@ export default function Clients() {
     }
 
     // Merge in appointment-derived data
-    for (const appt of appointments.filter(isClientAppointment)) {
+    for (const appt of appointments.filter(
+      (appointment) => !isBlockedTime(appointment),
+    )) {
       const name = appt.clientName;
       const existing = map.get(name);
       if (!existing) {
@@ -694,7 +696,7 @@ function ClientDetail({
       </div>
 
       <div className="flex-1 overflow-auto px-4 py-3 flex flex-col gap-4">
-        {upcoming.length === 0 && past.length === 0 ? (
+        {upcoming.length === 0 && past.length === 0 && inactive.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-center">
             <Calendar size={28} className="text-muted-foreground/40 mb-3" />
             <p className="text-sm text-muted-foreground">No appointments yet</p>
