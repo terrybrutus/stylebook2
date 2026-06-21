@@ -62,6 +62,8 @@ export interface Appointment {
   status?: AppointmentStatus;
   statusReason?: string;
   statusUpdatedAt?: string;
+  isBlockedTime?: boolean;
+  blockReason?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -81,6 +83,8 @@ export interface AppointmentInput {
   status?: AppointmentStatus;
   statusReason?: string;
   statusUpdatedAt?: string;
+  isBlockedTime?: boolean;
+  blockReason?: string;
 }
 
 // Settings types

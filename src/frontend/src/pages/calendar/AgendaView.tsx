@@ -1,5 +1,8 @@
 import { useShallow } from "zustand/shallow";
-import { isActiveAppointment } from "../../lib/appointmentLifecycle";
+import {
+  isActiveAppointment,
+  isBlockedTime,
+} from "../../lib/appointmentLifecycle";
 import {
   formatDate,
   formatDuration,
@@ -89,7 +92,11 @@ export function AgendaView({ anchorDate, onModalChange }: Props) {
                 {isToday ? `Today — ${dayLabel}` : dayLabel}
               </span>
               <span className="ml-auto text-xs text-muted-foreground">
-                ${appts.reduce((s, a) => s + a.price, 0).toFixed(0)}
+                $
+                {appts
+                  .filter((appointment) => !isBlockedTime(appointment))
+                  .reduce((s, a) => s + a.price, 0)
+                  .toFixed(0)}
               </span>
             </div>
 
@@ -127,11 +134,12 @@ function AgendaRow({
   isPast: boolean;
   onEdit: () => void;
 }) {
+  const blocked = isBlockedTime(appt);
   return (
     <button
       type="button"
       className={`w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-muted/30 active:bg-muted/60 transition-colors ${isPast ? "opacity-60" : ""}`}
-      onClick={onEdit}
+      onClick={blocked ? undefined : onEdit}
       data-ocid="agenda.appointment_row"
     >
       {/* Color stripe */}
@@ -153,10 +161,12 @@ function AgendaRow({
       {/* Info */}
       <div className="flex-1 min-w-0">
         <p className="text-sm font-semibold text-foreground truncate">
-          {appt.clientName}
+          {blocked
+            ? `Blocked: ${appt.blockReason ?? appt.clientName}`
+            : appt.clientName}
         </p>
         <p className="text-xs text-muted-foreground truncate">
-          {appt.serviceName}
+          {blocked ? "Unavailable" : appt.serviceName}
         </p>
         {appt.notes && (
           <p className="text-xs text-muted-foreground/70 truncate italic mt-0.5">
@@ -167,9 +177,11 @@ function AgendaRow({
 
       {/* Price + color chip */}
       <div className="flex flex-col items-end gap-1 flex-shrink-0">
-        <span className="text-sm font-semibold text-accent">
-          ${formatPrice(appt.price)}
-        </span>
+        {!blocked && (
+          <span className="text-sm font-semibold text-accent">
+            ${formatPrice(appt.price)}
+          </span>
+        )}
         <span
           className="w-3 h-3 rounded-full"
           style={{ backgroundColor: hexToRgba(appt.color, 0.8) }}

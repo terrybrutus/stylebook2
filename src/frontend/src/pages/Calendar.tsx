@@ -12,8 +12,9 @@ import {
 import { useCallback, useEffect, useState } from "react";
 import { useShallow } from "zustand/shallow";
 import AppointmentModal from "../components/AppointmentModal";
+import BlockTimeModal from "../components/BlockTimeModal";
 import QuickRebook from "../components/QuickRebook";
-import { isActiveAppointment } from "../lib/appointmentLifecycle";
+import { isClientAppointment } from "../lib/appointmentLifecycle";
 import { useAppStore } from "../store/useAppStore";
 import type { AppointmentModalState, CalendarView } from "../types";
 import { AgendaView } from "./calendar/AgendaView";
@@ -99,12 +100,13 @@ export default function Calendar() {
     clientName: string;
     serviceId: string;
   } | null>(null);
+  const [blockTimeOpen, setBlockTimeOpen] = useState(false);
 
   const appointments = useAppStore(useShallow((s) => s.appointments));
   const dayAppts =
     view === "day"
       ? appointments.filter(
-          (a) => a.date === currentDate && isActiveAppointment(a),
+          (a) => a.date === currentDate && isClientAppointment(a),
         )
       : [];
   const dayRevenue =
@@ -271,6 +273,16 @@ export default function Calendar() {
           >
             Today
           </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-8 text-xs"
+            onClick={() => setBlockTimeOpen(true)}
+            data-ocid="calendar.block_time_button"
+          >
+            Block time
+          </Button>
         </div>
       </div>
 
@@ -343,6 +355,11 @@ export default function Calendar() {
         prefillTime={modalState.prefillTime}
         prefillClientName={rebookPrefill?.clientName}
         prefillServiceId={rebookPrefill?.serviceId}
+      />
+      <BlockTimeModal
+        isOpen={blockTimeOpen}
+        date={currentDate}
+        onClose={() => setBlockTimeOpen(false)}
       />
     </div>
   );

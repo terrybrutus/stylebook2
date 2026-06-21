@@ -9,7 +9,7 @@ import { useMemo, useState } from "react";
 import { useShallow } from "zustand/shallow";
 import AppointmentModal from "../components/AppointmentModal";
 import QuickRebook from "../components/QuickRebook";
-import { isActiveAppointment } from "../lib/appointmentLifecycle";
+import { isClientAppointment } from "../lib/appointmentLifecycle";
 import {
   dateToString,
   formatDate,
@@ -58,7 +58,7 @@ export default function Today() {
   const appointments = useMemo(
     () =>
       allAppointments
-        .filter((a) => a.date === today && isActiveAppointment(a))
+        .filter((a) => a.date === today && isClientAppointment(a))
         .sort((a, b) => a.startTime.localeCompare(b.startTime)),
     [allAppointments, today],
   );
@@ -72,7 +72,7 @@ export default function Today() {
   const weekAppts = useMemo(
     () =>
       allAppointments.filter(
-        (a) => weekDates.includes(a.date) && isActiveAppointment(a),
+        (a) => weekDates.includes(a.date) && isClientAppointment(a),
       ),
     [allAppointments, weekDates],
   );
@@ -83,7 +83,7 @@ export default function Today() {
   const monthAppts = useMemo(
     () =>
       allAppointments.filter(
-        (a) => a.date.startsWith(monthPrefix) && isActiveAppointment(a),
+        (a) => a.date.startsWith(monthPrefix) && isClientAppointment(a),
       ),
     [allAppointments, monthPrefix],
   );

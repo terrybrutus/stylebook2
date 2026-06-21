@@ -5,6 +5,7 @@ import * as api from "../../lib/api";
 import {
   getCalendarHourPx,
   isActiveAppointment,
+  isBlockedTime,
 } from "../../lib/appointmentLifecycle";
 import { validateAppointmentChange } from "../../lib/appointmentValidation";
 import {
@@ -53,6 +54,12 @@ function getBlockLabel(
   appt: Appointment,
   phaseIndex: number,
 ): { label: string; isProcessing: boolean } {
+  if (isBlockedTime(appt)) {
+    return {
+      label: `Blocked: ${appt.blockReason ?? appt.clientName}`,
+      isProcessing: false,
+    };
+  }
   if (appt.phases.length === 0) {
     return {
       label: `${appt.clientName} — ${appt.serviceName}`,
@@ -99,13 +106,15 @@ type RenderBlock = {
 type ResizeEdge = "top" | "bottom";
 
 export function DayView({ date, onModalChange }: Props) {
-  const { settings, allAppointments, updateAppointment } = useAppStore(
-    useShallow((s) => ({
-      settings: s.settings,
-      allAppointments: s.appointments,
-      updateAppointment: s.updateAppointment,
-    })),
-  );
+  const { settings, allAppointments, deleteAppointment, updateAppointment } =
+    useAppStore(
+      useShallow((s) => ({
+        settings: s.settings,
+        allAppointments: s.appointments,
+        deleteAppointment: s.deleteAppointment,
+        updateAppointment: s.updateAppointment,
+      })),
+    );
   // Filter outside selector — filter() creates a new array reference every call,
   // which causes React #185 (useSyncExternalStore stale snapshot loop) if inside useShallow
   const appointments = useMemo(
@@ -445,6 +454,10 @@ export function DayView({ date, onModalChange }: Props) {
     if (!drag) return;
     if (drag.isTouch && drag.dragArmed && !drag.started) return;
     if (!drag?.started) {
+      if (isBlockedTime(block.appt)) {
+        setContextMenu({ x: e.clientX, y: e.clientY, appointment: block.appt });
+        return;
+      }
       onModalChange({ isOpen: true, mode: "edit", appointment: block.appt });
       return;
     }
@@ -867,6 +880,10 @@ export function DayView({ date, onModalChange }: Props) {
             type="button"
             className="w-full text-left px-4 py-2.5 text-sm hover:bg-muted transition-colors"
             onClick={() => {
+              if (isBlockedTime(contextMenu.appointment)) {
+                setContextMenu(null);
+                return;
+              }
               onModalChange({
                 isOpen: true,
                 mode: "edit",
@@ -876,18 +893,28 @@ export function DayView({ date, onModalChange }: Props) {
             }}
             data-ocid="appointment.edit_button"
           >
-            Edit
+            {isBlockedTime(contextMenu.appointment) ? "Blocked time" : "Edit"}
           </button>
           <button
             type="button"
             className="w-full text-left px-4 py-2.5 text-sm text-destructive hover:bg-muted transition-colors"
             onClick={() => {
+              if (isBlockedTime(contextMenu.appointment)) {
+                deleteAppointment(contextMenu.appointment.id);
+                api
+                  .deleteAppointment(contextMenu.appointment.id)
+                  .catch(console.error);
+                setContextMenu(null);
+                return;
+              }
               setCancelAppointment(contextMenu.appointment);
               setContextMenu(null);
             }}
             data-ocid="appointment.delete_button"
           >
-            Cancel / no-show
+            {isBlockedTime(contextMenu.appointment)
+              ? "Remove block"
+              : "Cancel / no-show"}
           </button>
         </div>
       )}
@@ -987,6 +1014,7 @@ function AppointmentBlock({
 }: BlockProps) {
   const { appt, topPx, heightPx, isProcessing, label, color } = block;
   const isShort = heightPx < 40;
+  const isBlocked = isBlockedTime(appt);
 
   const bgStyle = isProcessing
     ? {
@@ -1017,7 +1045,7 @@ function AppointmentBlock({
       onContextMenu={(e) => onContextMenu(e, appt)}
       data-ocid="appointment.card"
     >
-      {!isProcessing && appt.phases.length === 0 && (
+      {!isProcessing && appt.phases.length === 0 && !isBlocked && (
         <>
           <div
             className="absolute left-0 right-0 top-0 h-2 cursor-ns-resize opacity-0 group-hover:opacity-100 bg-foreground/20 z-10"

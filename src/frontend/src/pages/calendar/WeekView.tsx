@@ -5,6 +5,7 @@ import * as api from "../../lib/api";
 import {
   getCalendarHourPx,
   isActiveAppointment,
+  isBlockedTime,
 } from "../../lib/appointmentLifecycle";
 import { validateAppointmentChange } from "../../lib/appointmentValidation";
 import {
@@ -77,6 +78,12 @@ function getBlockLabel(
   appt: Appointment,
   phaseIndex: number,
 ): { label: string; isProcessing: boolean } {
+  if (isBlockedTime(appt)) {
+    return {
+      label: `Blocked: ${appt.blockReason ?? appt.clientName}`,
+      isProcessing: false,
+    };
+  }
   if (appt.phases.length === 0) {
     return {
       label: `${appt.clientName} — ${appt.serviceName}`,
@@ -103,13 +110,15 @@ export function WeekView({
   onDayClick,
   onWeekChange,
 }: Props) {
-  const { settings, allAppointments, updateSettings } = useAppStore(
-    useShallow((s) => ({
-      settings: s.settings,
-      allAppointments: s.appointments,
-      updateSettings: s.updateSettings,
-    })),
-  );
+  const { settings, allAppointments, deleteAppointment, updateSettings } =
+    useAppStore(
+      useShallow((s) => ({
+        settings: s.settings,
+        allAppointments: s.appointments,
+        deleteAppointment: s.deleteAppointment,
+        updateSettings: s.updateSettings,
+      })),
+    );
 
   const updateAppointmentInStore = useAppStore((s) => s.updateAppointment);
 
@@ -714,6 +723,10 @@ export function WeekView({
     if (!drag) return;
     if (drag.isTouch && drag.dragArmed && !drag.started) return;
     if (!drag?.started) {
+      if (isBlockedTime(block.appt)) {
+        setContextMenu({ x: e.clientX, y: e.clientY, appointment: block.appt });
+        return;
+      }
       onModalChange({ isOpen: true, mode: "edit", appointment: block.appt });
       return;
     }
@@ -1312,6 +1325,10 @@ export function WeekView({
             type="button"
             className="w-full text-left px-4 py-2.5 text-sm hover:bg-muted transition-colors"
             onClick={() => {
+              if (isBlockedTime(contextMenu.appointment)) {
+                setContextMenu(null);
+                return;
+              }
               onModalChange({
                 isOpen: true,
                 mode: "edit",
@@ -1321,18 +1338,28 @@ export function WeekView({
             }}
             data-ocid="appointment.edit_button"
           >
-            Edit
+            {isBlockedTime(contextMenu.appointment) ? "Blocked time" : "Edit"}
           </button>
           <button
             type="button"
             className="w-full text-left px-4 py-2.5 text-sm text-destructive hover:bg-muted transition-colors"
             onClick={() => {
+              if (isBlockedTime(contextMenu.appointment)) {
+                deleteAppointment(contextMenu.appointment.id);
+                api
+                  .deleteAppointment(contextMenu.appointment.id)
+                  .catch(console.error);
+                setContextMenu(null);
+                return;
+              }
               setCancelAppointment(contextMenu.appointment);
               setContextMenu(null);
             }}
             data-ocid="appointment.delete_button"
           >
-            Cancel / no-show
+            {isBlockedTime(contextMenu.appointment)
+              ? "Remove block"
+              : "Cancel / no-show"}
           </button>
         </div>
       )}
@@ -1448,6 +1475,7 @@ function WeekBlock({
 }: WeekBlockProps) {
   const { appt, topPx, heightPx, isProcessing, label, color } = block;
   const isShort = compact || heightPx < 50;
+  const isBlocked = isBlockedTime(appt);
 
   const zIndex = zIdx;
 
@@ -1481,7 +1509,7 @@ function WeekBlock({
       onContextMenu={(e) => onContextMenu(e, appt)}
       data-ocid="appointment.card"
     >
-      {!isProcessing && appt.phases.length === 0 && (
+      {!isProcessing && appt.phases.length === 0 && !isBlocked && (
         <>
           <span
             className="absolute left-0 right-0 top-0 h-2 cursor-ns-resize opacity-0 group-hover:opacity-100 bg-foreground/20 z-10"
@@ -1516,7 +1544,7 @@ function WeekBlock({
             className={`${compact ? "text-[8px]" : "text-[10px]"} font-bold leading-tight text-foreground`}
             style={{ wordBreak: "break-word", overflowWrap: "break-word" }}
           >
-            {appt.clientName}
+            {isBlocked ? label : appt.clientName}
           </span>
         ) : (
           // Full block: client name, service name, duration · price
@@ -1525,7 +1553,7 @@ function WeekBlock({
               className={`${compact ? "text-[8px]" : "text-[10px]"} font-bold leading-tight text-foreground`}
               style={{ wordBreak: "break-word", overflowWrap: "break-word" }}
             >
-              {appt.clientName}
+              {isBlocked ? label : appt.clientName}
             </span>
             <span
               className="text-[9px] text-foreground/80 leading-tight mt-0.5"

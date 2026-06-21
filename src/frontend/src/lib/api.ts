@@ -20,6 +20,8 @@ import type {
   Settings,
 } from "../types";
 import {
+  BLOCKED_TIME_COLOR,
+  BLOCKED_TIME_SERVICE_ID,
   buildAppointmentNotesWithMeta,
   splitAppointmentNotes,
 } from "./appointmentLifecycle";
@@ -54,6 +56,8 @@ function normalizeStoredAppointment(appointment: Appointment): Appointment {
     status: appointment.status ?? notesMeta.status,
     statusReason: appointment.statusReason ?? notesMeta.statusReason,
     statusUpdatedAt: appointment.statusUpdatedAt ?? notesMeta.statusUpdatedAt,
+    isBlockedTime: appointment.isBlockedTime ?? notesMeta.isBlockedTime,
+    blockReason: appointment.blockReason ?? notesMeta.blockReason,
   };
 }
 
@@ -146,6 +150,8 @@ function mapBackendAppointment(
 ): Appointment {
   const svc = serviceMap.get(a.serviceId);
   const notesMeta = splitAppointmentNotes(a.notes);
+  const isBlocked =
+    notesMeta.isBlockedTime || a.serviceId === BLOCKED_TIME_SERVICE_ID;
   // Recompute phase start times from appointment start since backend doesn't store them
   const phases = a.phases ?? [];
   let cursor = (() => {
@@ -161,20 +167,24 @@ function mapBackendAppointment(
   });
   return {
     id: a.id,
-    clientName: a.clientName,
+    clientName: isBlocked
+      ? (notesMeta.blockReason ?? a.clientName)
+      : a.clientName,
     serviceId: a.serviceId,
-    serviceName: svc?.name ?? "",
+    serviceName: isBlocked ? "Blocked Time" : (svc?.name ?? ""),
     date: a.date,
     startTime: a.startTime,
     durationMinutes: Number(a.durationMinutes),
-    price: a.price,
+    price: isBlocked ? 0 : a.price,
     phoneNumber: a.phone,
     notes: notesMeta.notes,
     phases: mappedPhases,
-    color: svc?.color ?? "#888888",
+    color: isBlocked ? BLOCKED_TIME_COLOR : (svc?.color ?? "#888888"),
     status: notesMeta.status,
     statusReason: notesMeta.statusReason,
     statusUpdatedAt: notesMeta.statusUpdatedAt,
+    isBlockedTime: isBlocked,
+    blockReason: notesMeta.blockReason,
     createdAt: "",
     updatedAt: "",
   };
@@ -313,6 +323,8 @@ export async function createAppointment(
     const appointment: Appointment = {
       ...input,
       status: input.status ?? "scheduled",
+      isBlockedTime: input.isBlockedTime,
+      blockReason: input.blockReason,
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
       createdAt: now,
       updatedAt: now,
@@ -362,6 +374,8 @@ export async function updateAppointment(
       ...all[idx],
       ...input,
       status: input.status ?? all[idx].status ?? "scheduled",
+      isBlockedTime: input.isBlockedTime ?? all[idx].isBlockedTime,
+      blockReason: input.blockReason ?? all[idx].blockReason,
       updatedAt: new Date().toISOString(),
     };
     all[idx] = updated;

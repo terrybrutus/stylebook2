@@ -17,6 +17,9 @@ export const INACTIVE_APPOINTMENT_STATUSES = new Set<AppointmentStatus>([
   "rescheduled",
 ]);
 
+export const BLOCKED_TIME_SERVICE_ID = "__stylebook_blocked_time__";
+export const BLOCKED_TIME_COLOR = "#8B5A2B";
+
 export function normalizeAppointmentStatus(status?: string): AppointmentStatus {
   if (
     status === "completed" ||
@@ -35,11 +38,24 @@ export function isActiveAppointment(appointment: Appointment): boolean {
   );
 }
 
+export function isBlockedTime(appointment: Appointment): boolean {
+  return (
+    appointment.isBlockedTime === true ||
+    appointment.serviceId === BLOCKED_TIME_SERVICE_ID
+  );
+}
+
+export function isClientAppointment(appointment: Appointment): boolean {
+  return isActiveAppointment(appointment) && !isBlockedTime(appointment);
+}
+
 export function splitAppointmentNotes(rawNotes?: string): {
   notes?: string;
   status: AppointmentStatus;
   statusReason?: string;
   statusUpdatedAt?: string;
+  isBlockedTime?: boolean;
+  blockReason?: string;
 } {
   if (!rawNotes) return { status: "scheduled" };
   const start = rawNotes.lastIndexOf(META_PREFIX);
@@ -56,12 +72,16 @@ export function splitAppointmentNotes(rawNotes?: string): {
       status?: string;
       statusReason?: string;
       statusUpdatedAt?: string;
+      isBlockedTime?: boolean;
+      blockReason?: string;
     };
     return {
       notes: visibleNotes,
       status: normalizeAppointmentStatus(parsed.status),
       statusReason: parsed.statusReason,
       statusUpdatedAt: parsed.statusUpdatedAt,
+      isBlockedTime: parsed.isBlockedTime === true,
+      blockReason: parsed.blockReason,
     };
   } catch {
     return { notes: rawNotes, status: "scheduled" };
@@ -70,16 +90,30 @@ export function splitAppointmentNotes(rawNotes?: string): {
 
 export function buildAppointmentNotesWithMeta(
   notes: string | undefined,
-  appointment: Pick<Appointment, "status" | "statusReason" | "statusUpdatedAt">,
+  appointment: Pick<
+    Appointment,
+    | "status"
+    | "statusReason"
+    | "statusUpdatedAt"
+    | "isBlockedTime"
+    | "blockReason"
+  >,
 ): string | undefined {
   const status = normalizeAppointmentStatus(appointment.status);
   const cleanNotes = notes?.trim();
-  if (status === "scheduled" && !appointment.statusReason) return cleanNotes;
+  if (
+    status === "scheduled" &&
+    !appointment.statusReason &&
+    !appointment.isBlockedTime
+  )
+    return cleanNotes;
 
   const meta = {
     status,
     statusReason: appointment.statusReason,
     statusUpdatedAt: appointment.statusUpdatedAt,
+    isBlockedTime: appointment.isBlockedTime,
+    blockReason: appointment.blockReason,
   };
   return `${cleanNotes ?? ""}${META_PREFIX}${btoa(JSON.stringify(meta))}${META_SUFFIX}`;
 }

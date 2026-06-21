@@ -1,5 +1,5 @@
 import type { Appointment, Settings } from "../types";
-import { isActiveAppointment } from "./appointmentLifecycle";
+import { isActiveAppointment, isBlockedTime } from "./appointmentLifecycle";
 import { formatTime12, getWorkingScheduleForDate } from "./utils";
 
 interface TimeBlock {
@@ -66,9 +66,11 @@ export function validateAppointmentChange(
         const isProcessing = next.isProcessing || current.isProcessing;
         result.overlap = {
           isProcessing,
-          message: isProcessing
-            ? `This overlaps ${existing.clientName}'s ${existing.serviceName} processing time. Stylist is likely free, but confirm before saving.`
-            : `This overlaps ${existing.clientName}'s ${existing.serviceName}. Confirm before saving.`,
+          message: isBlockedTime(existing)
+            ? `This overlaps blocked time (${existing.blockReason ?? existing.clientName}). Confirm before saving.`
+            : isProcessing
+              ? `This overlaps ${existing.clientName}'s ${existing.serviceName} processing time. Stylist is likely free, but confirm before saving.`
+              : `This overlaps ${existing.clientName}'s ${existing.serviceName}. Confirm before saving.`,
         };
         return { ...result, outsideHours: getOutsideHours(updated, settings) };
       }

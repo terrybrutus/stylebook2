@@ -1,7 +1,11 @@
 import { useEffect, useState } from "react";
 import { useShallow } from "zustand/shallow";
 import AppointmentCancelModal from "../../components/AppointmentCancelModal";
-import { isActiveAppointment } from "../../lib/appointmentLifecycle";
+import * as api from "../../lib/api";
+import {
+  isActiveAppointment,
+  isBlockedTime,
+} from "../../lib/appointmentLifecycle";
 import {
   dateToString,
   formatTime12,
@@ -29,10 +33,11 @@ const DAY_NAMES_MON = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const DAY_NAMES_SUN = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 export function MonthView({ year, month, onDayClick, onModalChange }: Props) {
-  const { settings, appointments } = useAppStore(
+  const { settings, appointments, deleteAppointment } = useAppStore(
     useShallow((s) => ({
       settings: s.settings,
       appointments: s.appointments,
+      deleteAppointment: s.deleteAppointment,
     })),
   );
   const _now = new Date();
@@ -134,6 +139,14 @@ export function MonthView({ year, month, onDayClick, onModalChange }: Props) {
                   appt={appt}
                   onEdit={(e) => {
                     e.stopPropagation();
+                    if (isBlockedTime(appt)) {
+                      setContextMenu({
+                        x: e.clientX,
+                        y: e.clientY,
+                        appointment: appt,
+                      });
+                      return;
+                    }
                     onModalChange({
                       isOpen: true,
                       mode: "edit",
@@ -177,6 +190,10 @@ export function MonthView({ year, month, onDayClick, onModalChange }: Props) {
             type="button"
             className="w-full text-left px-4 py-2.5 text-sm hover:bg-muted transition-colors"
             onClick={() => {
+              if (isBlockedTime(contextMenu.appointment)) {
+                setContextMenu(null);
+                return;
+              }
               onModalChange({
                 isOpen: true,
                 mode: "edit",
@@ -185,17 +202,27 @@ export function MonthView({ year, month, onDayClick, onModalChange }: Props) {
               setContextMenu(null);
             }}
           >
-            Edit
+            {isBlockedTime(contextMenu.appointment) ? "Blocked time" : "Edit"}
           </button>
           <button
             type="button"
             className="w-full text-left px-4 py-2.5 text-sm text-destructive hover:bg-muted transition-colors"
             onClick={() => {
+              if (isBlockedTime(contextMenu.appointment)) {
+                deleteAppointment(contextMenu.appointment.id);
+                api
+                  .deleteAppointment(contextMenu.appointment.id)
+                  .catch(console.error);
+                setContextMenu(null);
+                return;
+              }
               setCancelAppointment(contextMenu.appointment);
               setContextMenu(null);
             }}
           >
-            Cancel / no-show
+            {isBlockedTime(contextMenu.appointment)
+              ? "Remove block"
+              : "Cancel / no-show"}
           </button>
         </div>
       )}

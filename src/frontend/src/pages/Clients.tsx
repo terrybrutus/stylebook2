@@ -18,6 +18,7 @@ import * as api from "../lib/api";
 import {
   APPOINTMENT_STATUS_LABELS,
   isActiveAppointment,
+  isClientAppointment,
   normalizeAppointmentStatus,
 } from "../lib/appointmentLifecycle";
 import {
@@ -203,7 +204,7 @@ export default function Clients() {
     }
 
     // Merge in appointment-derived data
-    for (const appt of appointments) {
+    for (const appt of appointments.filter(isClientAppointment)) {
       const name = appt.clientName;
       const existing = map.get(name);
       if (!existing) {
