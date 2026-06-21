@@ -143,14 +143,6 @@ export function MonthView({ year, month, onDayClick, onModalChange }: Props) {
                   blockedTimeColor={blockedTimeColor}
                   onEdit={(e) => {
                     e.stopPropagation();
-                    if (isBlockedTime(appt)) {
-                      setContextMenu({
-                        x: e.clientX,
-                        y: e.clientY,
-                        appointment: appt,
-                      });
-                      return;
-                    }
                     onModalChange({
                       isOpen: true,
                       mode: "edit",

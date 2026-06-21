@@ -13,10 +13,16 @@ import React, {
 import { useShallow } from "zustand/shallow";
 import {
   createAppointment,
+  deleteAppointment,
   getClientNames,
   updateAppointment,
 } from "../lib/api";
-import { isActiveAppointment } from "../lib/appointmentLifecycle";
+import {
+  BLOCKED_TIME_SERVICE_ID,
+  DEFAULT_BLOCKED_TIME_COLOR,
+  isActiveAppointment,
+  isBlockedTime,
+} from "../lib/appointmentLifecycle";
 import {
   doBlocksOverlap,
   findAvailableSlots,
@@ -31,6 +37,7 @@ import type { SlotSuggestion } from "../lib/utils";
 import { useAppStore } from "../store/useAppStore";
 import type {
   Appointment,
+  AppointmentEntryType,
   AppointmentInput,
   PhaseInstance,
   Service,
@@ -46,6 +53,7 @@ interface Props {
   prefillTime?: string;
   prefillClientName?: string;
   prefillServiceId?: string;
+  initialEntryType?: AppointmentEntryType;
 }
 
 interface FormState {
@@ -117,6 +125,7 @@ export default function AppointmentModal({
   prefillTime,
   prefillClientName,
   prefillServiceId,
+  initialEntryType = "appointment",
 }: Props) {
   const services = useAppStore(useShallow((s) => s.services));
   const appointments = useAppStore(useShallow((s) => s.appointments));
@@ -124,11 +133,17 @@ export default function AppointmentModal({
   const settings = useAppStore(useShallow((s) => s.settings));
   const addAppointment = useAppStore((s) => s.addAppointment);
   const storeUpdate = useAppStore((s) => s.updateAppointment);
+  const storeDelete = useAppStore((s) => s.deleteAppointment);
   const addClientContact = useAppStore((s) => s.addClientContact);
   const updateClientContact = useAppStore((s) => s.updateClientContact);
   const [cancelTarget, setCancelTarget] = useState<Appointment | null>(null);
   const [form, setForm] = useState<FormState>(
     defaultForm(appointment, prefillDate, prefillTime, services),
+  );
+  const [entryType, setEntryType] = useState<AppointmentEntryType>(
+    appointment && isBlockedTime(appointment)
+      ? "blockedTime"
+      : initialEntryType,
   );
   const [clientSuggestions, setClientSuggestions] = useState<string[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -187,6 +202,21 @@ export default function AppointmentModal({
       prefillTime,
       currentServices,
     );
+    const nextEntryType =
+      currentAppointment && isBlockedTime(currentAppointment)
+        ? "blockedTime"
+        : initialEntryType;
+    setEntryType(nextEntryType);
+    if (nextEntryType === "blockedTime") {
+      base.clientName = currentAppointment?.blockReason ?? "Blocked Time";
+      base.serviceId = "";
+      base.price = "0";
+      base.phases = [];
+      if (!currentAppointment) {
+        base.durationHours = 1;
+        base.durationMinutes = 0;
+      }
+    }
     // Apply rebook prefill overrides if provided
     if (prefillClientName) base.clientName = prefillClientName;
     if (prefillServiceId) {
@@ -218,6 +248,7 @@ export default function AppointmentModal({
     prefillTime,
     prefillClientName,
     prefillServiceId,
+    initialEntryType,
   ]);
 
   // Load client names and build history map once when the modal opens.
@@ -307,7 +338,8 @@ export default function AppointmentModal({
   }, []);
 
   const slotSuggestions = useMemo<SlotSuggestion[]>(() => {
-    if (!isOpen || !form.serviceId || !form.date) return [];
+    if (entryType === "blockedTime" || !isOpen || !form.serviceId || !form.date)
+      return [];
     const svc =
       servicesRef.current.find((s) => s.id === form.serviceId) ?? null;
     // Always use form duration — it's set from the service on select and respects manual overrides.
@@ -329,11 +361,13 @@ export default function AppointmentModal({
     form.durationMinutes,
     settings,
     appointment?.id,
+    entryType,
   ]);
 
   if (!isOpen) return null;
 
   const totalDuration = form.durationHours * 60 + form.durationMinutes;
+  const isBlockEntry = entryType === "blockedTime";
 
   function capitalizeWords(s: string): string {
     return s.replace(/(^|\s)\S/g, (c) => c.toUpperCase());
@@ -501,10 +535,8 @@ export default function AppointmentModal({
   }
 
   function checkOverlap(): { message: string; isProcessing: boolean } | null {
-    const svc = services.find((s) => s.id === form.serviceId);
-    const _color = svc?.color ?? "#ACE6C0";
     const blocks =
-      form.phases.length > 0
+      entryType === "appointment" && form.phases.length > 0
         ? form.phases.map((p) => ({
             start: p.startTime,
             dur: p.durationMinutes,
@@ -536,14 +568,17 @@ export default function AppointmentModal({
       for (const nb of blocks) {
         for (const eb of existingBlocks) {
           if (doBlocksOverlap(nb.start, nb.dur, eb.start, eb.dur)) {
+            const existingLabel = isBlockedTime(existing)
+              ? `blocked time (${existing.blockReason ?? existing.clientName})`
+              : `${existing.clientName}'s ${existing.serviceName}`;
             if (eb.isProcessing) {
               return {
-                message: `This overlaps ${existing.clientName}'s ${existing.serviceName} — Processing. Stylist is likely free — proceed?`,
+                message: `This overlaps ${existingLabel} - Processing. Stylist is likely free - proceed?`,
                 isProcessing: true,
               };
             }
             return {
-              message: `This overlaps ${existing.clientName}'s ${existing.serviceName}. Do you want to proceed?`,
+              message: `This overlaps ${existingLabel}. Do you want to proceed?`,
               isProcessing: false,
             };
           }
@@ -632,13 +667,10 @@ export default function AppointmentModal({
     skipOverlapCheck = false,
     skipHoursCheck = false,
   ) {
-    if (
-      !form.clientName.trim() ||
-      !form.serviceId ||
-      !form.date ||
-      !form.startTime
-    )
-      return;
+    const isBlock = entryType === "blockedTime";
+    if (!form.clientName.trim() || !form.date || !form.startTime) return;
+    if (!isBlock && !form.serviceId) return;
+    if (totalDuration <= 0) return;
 
     if (!skipHoursCheck && !outsideHoursConfirmed) {
       const hoursMsg = checkWorkingHours();
@@ -659,31 +691,38 @@ export default function AppointmentModal({
     setSubmitting(true);
     try {
       const svc = services.find((s) => s.id === form.serviceId);
+      const blockReason = form.clientName.trim();
       const input: AppointmentInput = {
-        clientName: form.clientName.trim(),
-        serviceId: form.serviceId,
-        serviceName: svc?.name ?? form.serviceId,
+        clientName: isBlock ? blockReason : form.clientName.trim(),
+        serviceId: isBlock ? BLOCKED_TIME_SERVICE_ID : form.serviceId,
+        serviceName: isBlock ? "Unavailable" : (svc?.name ?? form.serviceId),
         date: form.date,
         startTime: form.startTime,
         durationMinutes: totalDuration,
-        price: Number.parseFloat(form.price) || 0,
-        phoneNumber: form.phone.trim() || undefined,
+        price: isBlock ? 0 : Number.parseFloat(form.price) || 0,
+        phoneNumber: isBlock ? undefined : form.phone.trim() || undefined,
         notes: form.notes.trim() || undefined,
-        phases: form.phases,
-        color: svc?.color ?? "#ACE6C0",
+        phases: isBlock ? [] : form.phases,
+        color: isBlock
+          ? (settings.blockedTimeColor ?? DEFAULT_BLOCKED_TIME_COLOR)
+          : (svc?.color ?? "#ACE6C0"),
+        isBlockedTime: isBlock,
+        blockReason: isBlock ? blockReason : undefined,
       };
-      const clientContact = {
-        name: input.clientName,
-        phone: input.phoneNumber,
-        notes: input.notes,
-      };
-      if (clientContacts.some((c) => c.name === clientContact.name)) {
-        updateClientContact(clientContact.name, {
-          phone: clientContact.phone,
-          notes: clientContact.notes,
-        });
-      } else {
-        addClientContact(clientContact);
+      if (!isBlock) {
+        const clientContact = {
+          name: input.clientName,
+          phone: input.phoneNumber,
+          notes: input.notes,
+        };
+        if (clientContacts.some((c) => c.name === clientContact.name)) {
+          updateClientContact(clientContact.name, {
+            phone: clientContact.phone,
+            notes: clientContact.notes,
+          });
+        } else {
+          addClientContact(clientContact);
+        }
       }
 
       if (mode === "create") {
@@ -691,7 +730,7 @@ export default function AppointmentModal({
         const created = await createAppointment(input);
         addAppointment(created);
         // Create recurring instances
-        if (recurEnabled && recurCount > 1) {
+        if (!isBlock && recurEnabled && recurCount > 1) {
           for (let i = 1; i < recurCount; i++) {
             const d = new Date(`${input.date}T00:00:00`);
             d.setDate(d.getDate() + i * recurWeeks * 7);
@@ -713,6 +752,20 @@ export default function AppointmentModal({
       onClose();
     } catch (err) {
       console.error("Failed to save appointment", err);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleRemoveBlock() {
+    if (!appointment || !isBlockEntry) return;
+    setSubmitting(true);
+    try {
+      storeDelete(appointment.id);
+      await deleteAppointment(appointment.id);
+      onClose();
+    } catch (err) {
+      console.error("Failed to remove blocked time", err);
     } finally {
       setSubmitting(false);
     }
@@ -742,7 +795,13 @@ export default function AppointmentModal({
         {/* Header */}
         <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-border flex-shrink-0">
           <h2 className="text-lg font-semibold">
-            {mode === "create" ? "New Appointment" : "Edit Appointment"}
+            {isBlockEntry
+              ? mode === "create"
+                ? "Block Time"
+                : "Edit Blocked Time"
+              : mode === "create"
+                ? "New Appointment"
+                : "Edit Appointment"}
           </h2>
           <button
             type="button"
@@ -886,19 +945,65 @@ export default function AppointmentModal({
           className="flex-1 overflow-y-auto px-5 py-4 space-y-4"
           style={{ overscrollBehavior: "contain" }}
         >
+          {mode === "create" && (
+            <div className="grid grid-cols-2 gap-1 rounded-lg bg-muted p-1">
+              <button
+                type="button"
+                onClick={() => setEntryType("appointment")}
+                className={`rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+                  !isBlockEntry
+                    ? "bg-card text-foreground shadow-sm"
+                    : "text-muted-foreground"
+                }`}
+                data-ocid="appointment.entry_type_appointment"
+              >
+                Appointment
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setEntryType("blockedTime");
+                  setForm((f) => ({
+                    ...f,
+                    clientName: f.clientName || "Lunch",
+                    serviceId: "",
+                    price: "0",
+                    phone: "",
+                    phases: [],
+                  }));
+                  setOverlapWarning(null);
+                  setOverlapConfirmed(false);
+                }}
+                className={`rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+                  isBlockEntry
+                    ? "bg-card text-foreground shadow-sm"
+                    : "text-muted-foreground"
+                }`}
+                data-ocid="appointment.entry_type_block"
+              >
+                Block Time
+              </button>
+            </div>
+          )}
+
           {/* Client name with autocomplete */}
           <div className="relative" ref={suggestRef}>
             <Label
               htmlFor="appt-client"
               className="text-sm font-medium mb-1.5 block"
             >
-              Client Name *
+              {isBlockEntry ? "Reason *" : "Client Name *"}
             </Label>
             <Input
               id="appt-client"
               value={form.clientName}
-              onChange={(e) => handleClientChange(e.target.value)}
+              onChange={(e) =>
+                isBlockEntry
+                  ? setForm((f) => ({ ...f, clientName: e.target.value }))
+                  : handleClientChange(e.target.value)
+              }
               onFocus={() => {
+                if (isBlockEntry) return;
                 const matches =
                   form.clientName.length >= 1
                     ? allClientNames.filter((n) =>
@@ -910,13 +1015,13 @@ export default function AppointmentModal({
                 setClientSuggestions(matches.slice(0, 8));
                 setShowSuggestions(matches.length > 0);
               }}
-              placeholder="e.g. Sarah Jenkins"
+              placeholder={isBlockEntry ? "e.g. Lunch" : "e.g. Sarah Jenkins"}
               autoComplete="off"
               autoCapitalize="words"
               className="text-base"
               data-ocid="appointment.client_input"
             />
-            {showSuggestions && (
+            {showSuggestions && !isBlockEntry && (
               <div className="absolute top-full left-0 right-0 z-10 mt-1 bg-popover border border-border rounded-lg shadow-lg overflow-hidden">
                 {clientSuggestions.map((name) => {
                   const hist = clientHistory[name];
@@ -959,50 +1064,54 @@ export default function AppointmentModal({
           </div>
 
           {/* Client contact info */}
-          <div>
-            <Label
-              htmlFor="appt-phone"
-              className="text-sm font-medium mb-1.5 block"
-            >
-              Phone Number
-            </Label>
-            <Input
-              id="appt-phone"
-              type="tel"
-              inputMode="tel"
-              value={form.phone}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, phone: e.target.value }))
-              }
-              placeholder="Client phone number"
-              className="text-base"
-              data-ocid="appointment.phone_input"
-            />
-          </div>
+          {!isBlockEntry && (
+            <div>
+              <Label
+                htmlFor="appt-phone"
+                className="text-sm font-medium mb-1.5 block"
+              >
+                Phone Number
+              </Label>
+              <Input
+                id="appt-phone"
+                type="tel"
+                inputMode="tel"
+                value={form.phone}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, phone: e.target.value }))
+                }
+                placeholder="Client phone number"
+                className="text-base"
+                data-ocid="appointment.phone_input"
+              />
+            </div>
+          )}
 
           {/* Service */}
-          <div>
-            <Label
-              htmlFor="appt-service"
-              className="text-sm font-medium mb-1.5 block"
-            >
-              Service
-            </Label>
-            <select
-              id="appt-service"
-              value={form.serviceId}
-              onChange={(e) => handleServiceChange(e.target.value)}
-              className="w-full rounded-md border border-input bg-background text-foreground px-3 py-2 text-base focus:outline-none focus:ring-2 focus:ring-ring"
-              data-ocid="appointment.service_select"
-            >
-              <option value="">Select a service…</option>
-              {services.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
-          </div>
+          {!isBlockEntry && (
+            <div>
+              <Label
+                htmlFor="appt-service"
+                className="text-sm font-medium mb-1.5 block"
+              >
+                Service
+              </Label>
+              <select
+                id="appt-service"
+                value={form.serviceId}
+                onChange={(e) => handleServiceChange(e.target.value)}
+                className="w-full rounded-md border border-input bg-background text-foreground px-3 py-2 text-base focus:outline-none focus:ring-2 focus:ring-ring"
+                data-ocid="appointment.service_select"
+              >
+                <option value="">Select a service…</option>
+                {services.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           {/* Date + Time */}
           <div className="grid grid-cols-2 gap-3">
@@ -1043,7 +1152,7 @@ export default function AppointmentModal({
           </div>
 
           {/* Smart slot suggestions */}
-          {form.serviceId && form.date && (
+          {!isBlockEntry && form.serviceId && form.date && (
             <div data-ocid="appointment.slot_suggestions">
               <div className="flex items-center justify-between mb-1.5">
                 <div>
@@ -1182,30 +1291,32 @@ export default function AppointmentModal({
           </div>
 
           {/* Price */}
-          <div>
-            <Label
-              htmlFor="appt-price"
-              className="text-sm font-medium mb-1.5 block"
-            >
-              Price ($)
-            </Label>
-            <Input
-              id="appt-price"
-              type="number"
-              inputMode="decimal"
-              min="0"
-              step="0.01"
-              value={form.price}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, price: e.target.value }))
-              }
-              className="text-base"
-              data-ocid="appointment.price_input"
-            />
-          </div>
+          {!isBlockEntry && (
+            <div>
+              <Label
+                htmlFor="appt-price"
+                className="text-sm font-medium mb-1.5 block"
+              >
+                Price ($)
+              </Label>
+              <Input
+                id="appt-price"
+                type="number"
+                inputMode="decimal"
+                min="0"
+                step="0.01"
+                value={form.price}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, price: e.target.value }))
+                }
+                className="text-base"
+                data-ocid="appointment.price_input"
+              />
+            </div>
+          )}
 
           {/* Appointment phases */}
-          {form.serviceId && (
+          {!isBlockEntry && form.serviceId && (
             <div
               className="rounded-lg border border-border p-3 space-y-3"
               data-ocid="appointment.phases_section"
@@ -1373,10 +1484,13 @@ export default function AppointmentModal({
               htmlFor="appt-notes"
               className="text-sm font-medium mb-1.5 block"
             >
-              Client Notes{" "}
-              <span className="text-xs font-normal text-muted-foreground">
-                (shared with client profile)
-              </span>
+              {isBlockEntry ? "Notes" : "Client Notes"}
+              {!isBlockEntry && (
+                <span className="text-xs font-normal text-muted-foreground">
+                  {" "}
+                  (shared with client profile)
+                </span>
+              )}
             </Label>
             <Textarea
               id="appt-notes"
@@ -1384,7 +1498,9 @@ export default function AppointmentModal({
               onChange={(e) =>
                 setForm((f) => ({ ...f, notes: e.target.value }))
               }
-              placeholder="Client notes…"
+              placeholder={
+                isBlockEntry ? "Optional details..." : "Client notes..."
+              }
               rows={3}
               className="text-base resize-none"
               data-ocid="appointment.notes_textarea"
@@ -1393,7 +1509,7 @@ export default function AppointmentModal({
         </div>
 
         {/* Recurring — create mode only */}
-        {mode === "create" && (
+        {mode === "create" && !isBlockEntry && (
           <div className="px-5 py-3 border-t border-border/60">
             <button
               type="button"
@@ -1460,17 +1576,22 @@ export default function AppointmentModal({
               disabled={
                 submitting ||
                 !form.clientName.trim() ||
-                !form.serviceId ||
+                (!isBlockEntry && !form.serviceId) ||
                 !form.date ||
-                !form.startTime
+                !form.startTime ||
+                totalDuration <= 0
               }
               data-ocid="appointment.submit_button"
             >
               {submitting
                 ? "Saving…"
-                : mode === "create"
-                  ? "Book Appointment"
-                  : "Save Changes"}
+                : isBlockEntry
+                  ? mode === "create"
+                    ? "Block Time"
+                    : "Save Block"
+                  : mode === "create"
+                    ? "Book Appointment"
+                    : "Save Changes"}
             </Button>
           </div>
           {mode === "edit" && appointment && (
@@ -1478,10 +1599,14 @@ export default function AppointmentModal({
               type="button"
               variant="ghost"
               className="w-full text-destructive hover:bg-destructive/10 text-sm"
-              onClick={() => setCancelTarget(appointment)}
+              onClick={() =>
+                isBlockEntry
+                  ? handleRemoveBlock()
+                  : setCancelTarget(appointment)
+              }
               data-ocid="appointment.delete_button"
             >
-              Cancel / no-show appointment
+              {isBlockEntry ? "Remove block" : "Cancel / no-show appointment"}
             </Button>
           )}
         </div>

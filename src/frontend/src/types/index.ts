@@ -119,12 +119,15 @@ export interface Settings {
 export type CalendarView = "day" | "week" | "month" | "agenda";
 
 // UI state types
+export type AppointmentEntryType = "appointment" | "blockedTime";
+
 export interface AppointmentModalState {
   isOpen: boolean;
   mode: "create" | "edit";
   appointment?: Appointment;
   prefillDate?: string;
   prefillTime?: string;
+  entryType?: AppointmentEntryType;
 }
 
 export interface Client {

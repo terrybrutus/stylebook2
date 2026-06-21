@@ -9,7 +9,12 @@ import { useMemo, useState } from "react";
 import { useShallow } from "zustand/shallow";
 import AppointmentModal from "../components/AppointmentModal";
 import QuickRebook from "../components/QuickRebook";
-import { isClientAppointment } from "../lib/appointmentLifecycle";
+import {
+  DEFAULT_BLOCKED_TIME_COLOR,
+  isActiveAppointment,
+  isBlockedTime,
+  isClientAppointment,
+} from "../lib/appointmentLifecycle";
 import {
   dateToString,
   formatDate,
@@ -58,9 +63,13 @@ export default function Today() {
   const appointments = useMemo(
     () =>
       allAppointments
-        .filter((a) => a.date === today && isClientAppointment(a))
+        .filter((a) => a.date === today && isActiveAppointment(a))
         .sort((a, b) => a.startTime.localeCompare(b.startTime)),
     [allAppointments, today],
+  );
+  const clientAppointments = useMemo(
+    () => appointments.filter((a) => isClientAppointment(a)),
+    [appointments],
   );
 
   // Week stats
@@ -160,10 +169,17 @@ export default function Today() {
           </p>
         ) : (
           <p className="text-sm text-muted-foreground mt-0.5">
-            {appointments.length} appointment
-            {appointments.length !== 1 ? "s" : ""} ·{" "}
+            {clientAppointments.length} appointment
+            {clientAppointments.length !== 1 ? "s" : ""}
+            {appointments.length > clientAppointments.length
+              ? ` + ${appointments.length - clientAppointments.length} block${appointments.length - clientAppointments.length !== 1 ? "s" : ""}`
+              : ""}
+            {" - "}
             <span className="font-semibold text-accent ml-1">
-              ${appointments.reduce((sum, a) => sum + a.price, 0).toFixed(2)}{" "}
+              $
+              {clientAppointments
+                .reduce((sum, a) => sum + a.price, 0)
+                .toFixed(2)}{" "}
               projected
             </span>
           </p>
@@ -242,6 +258,9 @@ export default function Today() {
                   appointment={appt}
                   index={i + 1}
                   onEdit={() => openEdit(appt)}
+                  blockedTimeColor={
+                    settings.blockedTimeColor ?? DEFAULT_BLOCKED_TIME_COLOR
+                  }
                 />
               ))}
             </div>
@@ -329,9 +348,17 @@ interface AppointmentCardProps {
   appointment: Appointment;
   index: number;
   onEdit: () => void;
+  blockedTimeColor: string;
 }
 
-function AppointmentCard({ appointment, index, onEdit }: AppointmentCardProps) {
+function AppointmentCard({
+  appointment,
+  index,
+  onEdit,
+  blockedTimeColor,
+}: AppointmentCardProps) {
+  const blocked = isBlockedTime(appointment);
+  const displayColor = blocked ? blockedTimeColor : appointment.color;
   const smsBody = encodeURIComponent(
     `Hi ${appointment.clientName}, just a reminder about your ${appointment.serviceName} appointment on ${formatDate(appointment.date, { weekday: "long", month: "long", day: "numeric" })} at ${formatTime12(appointment.startTime)}. See you then! 💇`,
   );
@@ -342,7 +369,7 @@ function AppointmentCard({ appointment, index, onEdit }: AppointmentCardProps) {
         type="button"
         onClick={onEdit}
         className="flex gap-3 p-4 rounded-xl border border-border bg-card shadow-xs hover:shadow-sm transition-all cursor-pointer text-left w-full"
-        style={{ borderLeftColor: appointment.color, borderLeftWidth: 4 }}
+        style={{ borderLeftColor: displayColor, borderLeftWidth: 4 }}
       >
         {/* Time column */}
         <div className="flex flex-col items-start min-w-[58px] shrink-0">
@@ -358,28 +385,32 @@ function AppointmentCard({ appointment, index, onEdit }: AppointmentCardProps) {
         <div className="flex flex-col items-center pt-1 shrink-0">
           <div
             className="w-2 h-2 rounded-full mt-0.5"
-            style={{ backgroundColor: appointment.color }}
+            style={{ backgroundColor: displayColor }}
           />
           <div
             className="w-px flex-1 mt-1"
-            style={{ backgroundColor: `${appointment.color}40` }}
+            style={{ backgroundColor: `${displayColor}40` }}
           />
         </div>
 
         {/* Content */}
         <div className="flex-1 min-w-0 pr-8">
           <p className="font-bold text-sm leading-tight">
-            {appointment.clientName}
+            {blocked
+              ? `Blocked: ${appointment.blockReason ?? appointment.clientName}`
+              : appointment.clientName}
           </p>
           <p
             className="text-sm text-muted-foreground mt-0.5 break-words"
             style={{ wordBreak: "break-word", overflowWrap: "break-word" }}
           >
-            {appointment.serviceName}
+            {blocked ? "Unavailable" : appointment.serviceName}
           </p>
-          <p className="text-sm font-semibold text-accent mt-1">
-            ${formatPrice(appointment.price)}
-          </p>
+          {!blocked && (
+            <p className="text-sm font-semibold text-accent mt-1">
+              ${formatPrice(appointment.price)}
+            </p>
+          )}
           {appointment.notes && (
             <p className="text-xs text-muted-foreground mt-1.5 line-clamp-2 italic">
               {appointment.notes}
@@ -389,7 +420,7 @@ function AppointmentCard({ appointment, index, onEdit }: AppointmentCardProps) {
       </button>
 
       {/* SMS reminder — only if phone number exists */}
-      {appointment.phoneNumber && (
+      {!blocked && appointment.phoneNumber && (
         <a
           href={`sms:${appointment.phoneNumber}&body=${smsBody}`}
           className="absolute top-3 right-3 p-1.5 rounded-lg text-muted-foreground hover:text-accent hover:bg-accent/10 transition-colors"

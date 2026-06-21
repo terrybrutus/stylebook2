@@ -151,7 +151,7 @@ function AgendaRow({
     <button
       type="button"
       className={`w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-muted/30 active:bg-muted/60 transition-colors ${isPast ? "opacity-60" : ""}`}
-      onClick={blocked ? undefined : onEdit}
+      onClick={onEdit}
       data-ocid="agenda.appointment_row"
     >
       {/* Color stripe */}

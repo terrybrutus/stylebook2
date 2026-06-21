@@ -462,10 +462,6 @@ export function DayView({ date, onModalChange, onSlotSelect }: Props) {
     if (!drag) return;
     if (drag.isTouch && drag.dragArmed && !drag.started) return;
     if (!drag?.started) {
-      if (isBlockedTime(block.appt)) {
-        setContextMenu({ x: e.clientX, y: e.clientY, appointment: block.appt });
-        return;
-      }
       onModalChange({ isOpen: true, mode: "edit", appointment: block.appt });
       return;
     }
@@ -1054,7 +1050,7 @@ function AppointmentBlock({
       onContextMenu={(e) => onContextMenu(e, appt)}
       data-ocid="appointment.card"
     >
-      {!isProcessing && appt.phases.length === 0 && !isBlocked && (
+      {!isProcessing && appt.phases.length === 0 && (
         <>
           <div
             className="absolute left-0 right-0 top-0 h-2 cursor-ns-resize opacity-0 group-hover:opacity-100 bg-foreground/20 z-10"

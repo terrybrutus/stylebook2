@@ -12,7 +12,6 @@ import {
 import { useCallback, useEffect, useState } from "react";
 import { useShallow } from "zustand/shallow";
 import AppointmentModal from "../components/AppointmentModal";
-import BlockTimeModal from "../components/BlockTimeModal";
 import QuickRebook from "../components/QuickRebook";
 import { isClientAppointment } from "../lib/appointmentLifecycle";
 import { useAppStore } from "../store/useAppStore";
@@ -100,15 +99,6 @@ export default function Calendar() {
     clientName: string;
     serviceId: string;
   } | null>(null);
-  const [slotAction, setSlotAction] = useState<{
-    date: string;
-    time: string;
-  } | null>(null);
-  const [blockTimeSlot, setBlockTimeSlot] = useState<{
-    date: string;
-    time: string;
-  } | null>(null);
-
   const appointments = useAppStore(useShallow((s) => s.appointments));
   const dayAppts =
     view === "day"
@@ -161,25 +151,14 @@ export default function Calendar() {
   }, [currentDate]);
 
   const handleSlotSelect = useCallback((date: string, time: string) => {
-    setSlotAction({ date, time });
-  }, []);
-
-  const handleBookFromSlot = useCallback(() => {
-    if (!slotAction) return;
     setModalState({
       isOpen: true,
       mode: "create",
-      prefillDate: slotAction.date,
-      prefillTime: slotAction.time,
+      prefillDate: date,
+      prefillTime: time,
+      entryType: "appointment",
     });
-    setSlotAction(null);
-  }, [slotAction]);
-
-  const handleBlockFromSlot = useCallback(() => {
-    if (!slotAction) return;
-    setBlockTimeSlot(slotAction);
-    setSlotAction(null);
-  }, [slotAction]);
+  }, []);
 
   const handleRebook = useCallback(
     (clientName: string, serviceId: string) => {
@@ -378,42 +357,8 @@ export default function Calendar() {
         prefillTime={modalState.prefillTime}
         prefillClientName={rebookPrefill?.clientName}
         prefillServiceId={rebookPrefill?.serviceId}
+        initialEntryType={modalState.entryType}
       />
-      <BlockTimeModal
-        isOpen={blockTimeSlot !== null}
-        date={blockTimeSlot?.date ?? currentDate}
-        startTime={blockTimeSlot?.time}
-        onClose={() => setBlockTimeSlot(null)}
-      />
-      {slotAction && (
-        <div className="fixed inset-0 z-[75] flex items-end sm:items-center justify-center bg-foreground/35 backdrop-blur-sm p-0 sm:p-4">
-          <div className="w-full sm:max-w-sm rounded-t-2xl sm:rounded-2xl bg-card shadow-2xl border border-border p-4">
-            <p className="text-sm font-semibold">What do you want to add?</p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              {slotAction.date} at {slotAction.time}
-            </p>
-            <div className="mt-4 flex flex-col gap-2">
-              <Button type="button" onClick={handleBookFromSlot}>
-                Add appointment
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={handleBlockFromSlot}
-              >
-                Block time
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                onClick={() => setSlotAction(null)}
-              >
-                Cancel
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
