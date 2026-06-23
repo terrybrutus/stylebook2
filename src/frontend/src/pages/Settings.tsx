@@ -14,7 +14,12 @@ import { useTheme } from "next-themes";
 import { useRef, useState } from "react";
 import { useShallow } from "zustand/shallow";
 import * as api from "../lib/api";
-import { DEFAULT_BLOCKED_TIME_COLOR } from "../lib/appointmentLifecycle";
+import {
+  BLOCKED_TIME_SERVICE_ID,
+  DEFAULT_BLOCKED_TIME_COLOR,
+  isBlockedTime,
+  normalizeAppointmentStatus,
+} from "../lib/appointmentLifecycle";
 import {
   type CsvAppointmentRow,
   type ParsedBackupImport,
@@ -30,6 +35,7 @@ import type {
   Appointment,
   ClientContact,
   Service,
+  Settings as SettingsType,
   WorkingDaySchedule,
 } from "../types";
 
@@ -215,7 +221,7 @@ export default function Settings() {
       const parsed = parseBackupImport(text, file.name);
       const message =
         parsed.kind === "legacy-csv"
-          ? `Import ${parsed.appointments.length} CSV appointment(s)? This replaces current appointments but keeps your existing services/settings.`
+          ? `Restore ${parsed.appointments.length} CSV appointment(s)? This replaces current appointments, keeps existing settings, and adds any missing services from the file.`
           : `Restore full backup with ${parsed.backup.data.appointments.length} appointment(s), ${parsed.backup.data.services.length} service(s), and settings? This replaces current app data.`;
       if (!window.confirm(message)) return;
       setIsImporting(true);
@@ -244,7 +250,7 @@ export default function Settings() {
   }
 
   async function restoreLegacyCsv(rows: CsvAppointmentRow[]): Promise<string> {
-    await Promise.all(appointments.map((a) => api.deleteAppointment(a.id)));
+    await deleteAllKnownAppointments();
     setAppointments([]);
 
     const nextServices = [...services];
@@ -302,18 +308,21 @@ export default function Settings() {
     }
     setAppointments(restored);
     setClientContacts(buildClientContactsFromCsvRows(rows));
-    return `Imported ${restored.length} appointment(s) from CSV.`;
+    return `Restored ${restored.length} appointment(s) from CSV.`;
   }
 
   async function restoreFullBackup(data: StyleBookBackupData): Promise<string> {
-    await Promise.all(appointments.map((a) => api.deleteAppointment(a.id)));
+    const importedSettings = normalizeImportedSettings(data.settings);
+    const importedContacts = normalizeImportedContacts(data.clientContacts);
+
+    await deleteAllKnownAppointments();
     setAppointments([]);
 
-    await Promise.all(services.map((service) => api.deleteService(service.id)));
+    await deleteAllKnownServices();
     const createdServices: Service[] = [];
     const serviceIdMap = new Map<string, string>();
 
-    for (const service of data.services) {
+    for (const service of normalizeImportedServices(data.services)) {
       const created = await api.createService({
         name: service.name,
         price: service.price,
@@ -329,18 +338,23 @@ export default function Settings() {
     setServices(createdServices);
 
     const restoredAppointments: Appointment[] = [];
-    for (const appointment of data.appointments) {
+    for (const appointment of normalizeImportedAppointments(
+      data.appointments,
+      data.services,
+      importedSettings,
+    )) {
+      const blockedTime = isBlockedTime(appointment);
       const service =
         createdServices.find(
           (s) => s.id === serviceIdMap.get(appointment.serviceId),
         ) ?? createdServices.find((s) => s.name === appointment.serviceName);
-      if (!service) {
+      if (!service && !blockedTime) {
         throw new Error(`Service not found for ${appointment.clientName}.`);
       }
       const created = await api.createAppointment({
         clientName: appointment.clientName,
-        serviceId: service.id,
-        serviceName: service.name,
+        serviceId: service?.id ?? BLOCKED_TIME_SERVICE_ID,
+        serviceName: service?.name ?? "Blocked Time",
         date: appointment.date,
         startTime: appointment.startTime,
         durationMinutes: appointment.durationMinutes,
@@ -348,20 +362,128 @@ export default function Settings() {
         phoneNumber: appointment.phoneNumber,
         notes: appointment.notes,
         phases: appointment.phases,
-        color: service.color,
+        color: service?.color ?? appointment.color,
         status: appointment.status,
         statusReason: appointment.statusReason,
         statusUpdatedAt: appointment.statusUpdatedAt,
+        isBlockedTime: appointment.isBlockedTime,
+        blockReason: appointment.blockReason,
       });
       restoredAppointments.push(created);
     }
 
-    await api.updateSettings(data.settings);
-    setSettings(data.settings);
-    setTheme(data.settings.darkMode ? "dark" : "light");
+    await api.updateSettings(importedSettings);
+    setSettings(importedSettings);
+    setTheme(importedSettings.darkMode ? "dark" : "light");
     setAppointments(restoredAppointments);
-    setClientContacts(data.clientContacts);
+    setClientContacts(importedContacts);
     return `Restored ${restoredAppointments.length} appointment(s), ${createdServices.length} service(s), settings, and client contacts.`;
+  }
+
+  async function deleteAllKnownAppointments() {
+    const freshAppointments = await api.getAppointments().catch(() => []);
+    const ids = new Set([
+      ...appointments.map((appointment) => appointment.id),
+      ...freshAppointments.map((appointment) => appointment.id),
+    ]);
+    await Promise.all(
+      [...ids].map((id) => api.deleteAppointment(id).catch(console.error)),
+    );
+  }
+
+  async function deleteAllKnownServices() {
+    const freshServices = await api.getServices().catch(() => []);
+    const ids = new Set([
+      ...services.map((service) => service.id),
+      ...freshServices.map((service) => service.id),
+    ]);
+    await Promise.all(
+      [...ids].map((id) => api.deleteService(id).catch(console.error)),
+    );
+  }
+
+  function normalizeImportedSettings(
+    imported: StyleBookBackupData["settings"],
+  ): SettingsType {
+    return {
+      ...settings,
+      ...imported,
+      mobileWeekLayout:
+        imported.mobileWeekLayout ?? settings.mobileWeekLayout ?? "three-day",
+      calendarDensity:
+        imported.calendarDensity ?? settings.calendarDensity ?? "compact",
+      blockedTimeColor:
+        imported.blockedTimeColor ??
+        settings.blockedTimeColor ??
+        DEFAULT_BLOCKED_TIME_COLOR,
+    };
+  }
+
+  function normalizeImportedServices(imported: Service[]): Service[] {
+    const byId = new Map<string, Service>();
+    for (const service of imported) {
+      const phases = service.phases ?? [];
+      byId.set(service.id, {
+        ...service,
+        phases,
+        totalDurationMinutes:
+          service.totalDurationMinutes ??
+          phases.reduce((sum, phase) => sum + phase.durationMinutes, 0),
+      });
+    }
+    return [...byId.values()];
+  }
+
+  function normalizeImportedAppointments(
+    importedAppointments: Appointment[],
+    importedServices: Service[],
+    importedSettings: SettingsType,
+  ): Appointment[] {
+    const serviceById = new Map(
+      importedServices.map((service) => [service.id, service]),
+    );
+    const byId = new Map<string, Appointment>();
+    for (const appointment of importedAppointments) {
+      const service = serviceById.get(appointment.serviceId);
+      const blockedTime =
+        appointment.isBlockedTime === true ||
+        appointment.serviceId === BLOCKED_TIME_SERVICE_ID;
+      const now = new Date().toISOString();
+      byId.set(appointment.id, {
+        ...appointment,
+        serviceName: blockedTime
+          ? "Blocked Time"
+          : (appointment.serviceName ?? service?.name ?? ""),
+        phases: appointment.phases ?? [],
+        color: blockedTime
+          ? (appointment.color ??
+            importedSettings.blockedTimeColor ??
+            DEFAULT_BLOCKED_TIME_COLOR)
+          : (appointment.color ?? service?.color ?? "#888888"),
+        price: blockedTime ? 0 : appointment.price,
+        status: normalizeAppointmentStatus(appointment.status),
+        isBlockedTime: blockedTime || appointment.isBlockedTime,
+        blockReason: appointment.blockReason,
+        createdAt: appointment.createdAt || now,
+        updatedAt: appointment.updatedAt || appointment.createdAt || now,
+      });
+    }
+    return [...byId.values()];
+  }
+
+  function normalizeImportedContacts(
+    importedContacts: ClientContact[],
+  ): ClientContact[] {
+    const byName = new Map<string, ClientContact>();
+    for (const contact of importedContacts) {
+      if (!contact.name.trim()) continue;
+      byName.set(contact.name, {
+        name: contact.name,
+        phone: contact.phone,
+        notes: contact.notes,
+      });
+    }
+    return [...byName.values()].sort((a, b) => a.name.localeCompare(b.name));
   }
 
   // Per-day working hours helpers
@@ -932,7 +1054,8 @@ export default function Settings() {
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium">Import Backup</p>
                   <p className="text-xs text-muted-foreground mt-0.5">
-                    Restores full JSON backups or legacy appointment CSV files
+                    Full JSON restores app state; legacy CSV restores the
+                    appointment list
                   </p>
                   {importStatus && (
                     <p className="text-xs text-accent mt-1">{importStatus}</p>

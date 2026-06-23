@@ -556,21 +556,17 @@ export async function getSettings(): Promise<Settings> {
   try {
     const actor = getActor();
     const snap = await actor.getSettings();
-    const localDarkMode = loadJSON<Settings>(
-      KEYS.settings,
-      DEFAULT_SETTINGS,
-    ).darkMode;
+    const localSettings = loadJSON<Settings>(KEYS.settings, DEFAULT_SETTINGS);
     return {
+      ...localSettings,
       startWeekOnMonday: snap.startWeekOnMonday,
-      darkMode: localDarkMode,
-      mobileWeekLayout:
-        loadJSON<Settings>(KEYS.settings, DEFAULT_SETTINGS).mobileWeekLayout ??
-        "three-day",
-      blockedTimeColor:
-        loadJSON<Settings>(KEYS.settings, DEFAULT_SETTINGS).blockedTimeColor ??
-        DEFAULT_BLOCKED_TIME_COLOR,
       workingHoursStart: snap.workingHoursStart,
       workingHoursEnd: snap.workingHoursEnd,
+      darkMode: localSettings.darkMode,
+      mobileWeekLayout: localSettings.mobileWeekLayout ?? "three-day",
+      calendarDensity: localSettings.calendarDensity ?? "compact",
+      blockedTimeColor:
+        localSettings.blockedTimeColor ?? DEFAULT_BLOCKED_TIME_COLOR,
     };
   } catch {
     return loadJSON<Settings>(KEYS.settings, DEFAULT_SETTINGS);
