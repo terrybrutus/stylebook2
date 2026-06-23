@@ -23,20 +23,26 @@ interface Client {
 
 interface Props {
   onRebook: (clientName: string, serviceId: string) => void;
+  defaultCollapsed?: boolean;
 }
 
-const QUICK_REBOOK_COLLAPSED_KEY = "stylebook.quickRebookCollapsed";
+const QUICK_REBOOK_COLLAPSED_KEY = "stylebook.quickRebookCollapsed.v2";
 
 function getTodayString() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-export default function QuickRebook({ onRebook }: Props) {
+export default function QuickRebook({
+  onRebook,
+  defaultCollapsed = true,
+}: Props) {
   const appointments = useAppStore(useShallow((s) => s.appointments));
   const [collapsed, setCollapsed] = useState(() => {
-    if (typeof window === "undefined") return false;
-    return localStorage.getItem(QUICK_REBOOK_COLLAPSED_KEY) === "true";
+    if (typeof window === "undefined") return defaultCollapsed;
+    const stored = localStorage.getItem(QUICK_REBOOK_COLLAPSED_KEY);
+    if (stored === null) return defaultCollapsed;
+    return stored === "true";
   });
 
   useEffect(() => {
@@ -81,16 +87,21 @@ export default function QuickRebook({ onRebook }: Props) {
   if (clients.length === 0) return null;
 
   return (
-    <div className="px-4 pb-4" data-ocid="quick_rebook.section">
+    <div className="px-3 py-2" data-ocid="quick_rebook.section">
       <button
         type="button"
         onClick={() => setCollapsed((value) => !value)}
-        className="flex items-center gap-2 mb-3 w-full text-left"
+        className="flex items-center gap-2 w-full rounded-xl px-2.5 py-2 text-left transition-colors hover:bg-muted/60"
         aria-expanded={!collapsed}
         data-ocid="quick_rebook.toggle"
       >
         <RotateCcw size={15} className="text-accent" />
-        <h3 className="text-sm font-semibold">Quick Rebook</h3>
+        <div className="min-w-0">
+          <h3 className="text-sm font-semibold leading-tight">Quick Rebook</h3>
+          <p className="text-[11px] text-muted-foreground leading-tight">
+            Tap to {collapsed ? "show" : "hide"} recent clients
+          </p>
+        </div>
         <span className="ml-auto text-xs text-muted-foreground">
           {clients.length} client{clients.length !== 1 ? "s" : ""}
         </span>
@@ -100,7 +111,7 @@ export default function QuickRebook({ onRebook }: Props) {
         />
       </button>
       {collapsed ? null : (
-        <div className="flex flex-col gap-2">
+        <div className="mt-2 flex max-h-[min(42vh,420px)] flex-col gap-2 overflow-y-auto pr-1 pb-2">
           {clients.map((client, i) => (
             <button
               type="button"

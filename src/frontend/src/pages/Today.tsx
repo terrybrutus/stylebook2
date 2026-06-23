@@ -204,7 +204,7 @@ export default function Today() {
       </div>
 
       {/* Scrollable content */}
-      <div className="flex-1 overflow-auto">
+      <div className="flex-1 overflow-auto pb-28 md:pb-0">
         {/* Stats panel — week & month at a glance */}
         <div className="px-4 pt-3 pb-1" data-ocid="today.stats">
           <div className="flex items-center gap-1.5 mb-2">
@@ -320,14 +320,14 @@ export default function Today() {
         )}
 
         {/* Quick Rebook */}
-        <div className="border-t border-border mt-1">
+        <div className="border-t border-border mt-1 bg-card/95">
           <QuickRebook onRebook={handleRebook} />
         </div>
       </div>
 
       {/* FAB — only when list has items */}
       {appointments.length > 0 && (
-        <div className="fixed bottom-20 right-4 md:bottom-6 md:right-6 z-40">
+        <div className="fixed right-4 bottom-[calc(env(safe-area-inset-bottom)+76px)] z-40 md:hidden">
           <button
             type="button"
             onClick={openCreate}

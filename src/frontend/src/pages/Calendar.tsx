@@ -294,13 +294,23 @@ export default function Calendar() {
           >
             Today
           </Button>
+          <Button
+            type="button"
+            size="sm"
+            className="hidden h-8 text-xs md:flex"
+            onClick={handleOpenCreate}
+            data-ocid="calendar.new_appointment_button"
+          >
+            <Plus size={14} />
+            Add
+          </Button>
         </div>
       </div>
 
       {/* Calendar view — scrollable */}
       <div className="flex flex-1 overflow-hidden relative">
         {view === "day" && (
-          <div className="flex flex-1 overflow-y-auto">
+          <div className="flex flex-1 overflow-y-auto pb-28 md:pb-0">
             <DayView
               date={currentDate}
               onModalChange={handleModalChange}
@@ -338,7 +348,11 @@ export default function Calendar() {
       {/* Floating action button */}
       <button
         type="button"
-        className="fixed bottom-20 right-5 z-30 w-14 h-14 rounded-full bg-accent text-accent-foreground shadow-lg flex items-center justify-center hover:bg-accent/90 active:scale-95 transition-all md:bottom-6"
+        className={`fixed right-5 z-30 flex h-14 w-14 items-center justify-center rounded-full bg-accent text-accent-foreground shadow-lg transition-all hover:bg-accent/90 active:scale-95 md:hidden ${
+          view === "day"
+            ? "bottom-[calc(env(safe-area-inset-bottom)+92px)]"
+            : "bottom-[calc(env(safe-area-inset-bottom)+76px)]"
+        }`}
         onClick={handleOpenCreate}
         aria-label="New appointment"
         data-ocid="calendar.new_appointment_fab"
@@ -348,7 +362,7 @@ export default function Calendar() {
 
       {/* Quick Rebook — day view only */}
       {view === "day" && (
-        <div className="border-t border-border flex-shrink-0">
+        <div className="border-t border-border bg-card/95 flex-shrink-0">
           <QuickRebook onRebook={handleRebook} />
         </div>
       )}
