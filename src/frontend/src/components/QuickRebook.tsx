@@ -1,7 +1,13 @@
 import { ChevronDown, Clock, RotateCcw } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useShallow } from "zustand/shallow";
-import { isClientAppointment } from "../lib/appointmentLifecycle";
+import {
+  compareAppointmentDateTime,
+  getCompletedAppointments,
+  getPastUnresolvedAppointments,
+  getUpcomingAppointments,
+  isClientRecord,
+} from "../lib/appointmentMetrics";
 import { formatDate } from "../lib/utils";
 import { useAppStore } from "../store/useAppStore";
 import type { Appointment } from "../types";
@@ -10,7 +16,8 @@ interface Client {
   name: string;
   lastService: string;
   lastServiceId: string;
-  lastDate: string;
+  lastDate?: string;
+  nextDate?: string;
   color: string;
 }
 
@@ -19,6 +26,11 @@ interface Props {
 }
 
 const QUICK_REBOOK_COLLAPSED_KEY = "stylebook.quickRebookCollapsed";
+
+function getTodayString() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
 
 export default function QuickRebook({ onRebook }: Props) {
   const appointments = useAppStore(useShallow((s) => s.appointments));
@@ -32,25 +44,38 @@ export default function QuickRebook({ onRebook }: Props) {
   }, [collapsed]);
 
   const clients = useMemo<Client[]>(() => {
-    const map = new Map<string, Appointment>();
-    // Sort newest first so we get the last appointment per client
-    const sorted = appointments
-      .filter((appointment) => isClientAppointment(appointment))
-      .sort(
-        (a, b) =>
-          b.date.localeCompare(a.date) ||
-          b.startTime.localeCompare(a.startTime),
-      );
-    for (const a of sorted) {
-      if (!map.has(a.clientName)) map.set(a.clientName, a);
+    const today = getTodayString();
+    const byClient = new Map<string, Appointment[]>();
+    for (const appointment of appointments.filter(isClientRecord)) {
+      const list = byClient.get(appointment.clientName) ?? [];
+      list.push(appointment);
+      byClient.set(appointment.clientName, list);
     }
-    return Array.from(map.values()).map((a) => ({
-      name: a.clientName,
-      lastService: a.serviceName,
-      lastServiceId: a.serviceId,
-      lastDate: a.date,
-      color: a.color,
-    }));
+    const rows: Client[] = [];
+    for (const [name, appts] of byClient) {
+      const completed = getCompletedAppointments(appts);
+      const pastUnresolved = getPastUnresolvedAppointments(appts, today);
+      const upcoming = getUpcomingAppointments(appts, today);
+      const lastPast = [...completed, ...pastUnresolved].sort(
+        compareAppointmentDateTime,
+      )[completed.length + pastUnresolved.length - 1];
+      const next = upcoming[0];
+      const basis = lastPast ?? next;
+      if (!basis) continue;
+      rows.push({
+        name,
+        lastService: basis.serviceName,
+        lastServiceId: basis.serviceId,
+        color: basis.color,
+        ...(lastPast ? { lastDate: lastPast.date } : {}),
+        ...(next ? { nextDate: next.date } : {}),
+      });
+    }
+    return rows.sort((a, b) => {
+      if (a.nextDate && !b.nextDate) return 1;
+      if (!a.nextDate && b.nextDate) return -1;
+      return a.name.localeCompare(b.name);
+    });
   }, [appointments]);
 
   if (clients.length === 0) return null;
@@ -96,14 +121,25 @@ export default function QuickRebook({ onRebook }: Props) {
                 <p className="text-xs text-muted-foreground truncate">
                   {client.lastService}
                 </p>
+                {client.nextDate && (
+                  <p className="text-[10px] text-muted-foreground truncate">
+                    Next booked{" "}
+                    {formatDate(client.nextDate, {
+                      month: "short",
+                      day: "numeric",
+                    })}
+                  </p>
+                )}
               </div>
               <div className="flex items-center gap-1 text-xs text-muted-foreground shrink-0">
                 <Clock size={11} />
                 <span>
-                  {formatDate(client.lastDate, {
-                    month: "short",
-                    day: "numeric",
-                  })}
+                  {client.lastDate
+                    ? formatDate(client.lastDate, {
+                        month: "short",
+                        day: "numeric",
+                      })
+                    : "Booked"}
                 </span>
               </div>
             </button>

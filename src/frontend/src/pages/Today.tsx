@@ -16,6 +16,12 @@ import {
   isClientAppointment,
 } from "../lib/appointmentLifecycle";
 import {
+  getCompletedAppointments,
+  getUpcomingAppointments,
+  isClientRecord,
+  sumAppointmentPrice,
+} from "../lib/appointmentMetrics";
+import {
   dateToString,
   formatDate,
   formatDuration,
@@ -71,6 +77,12 @@ export default function Today() {
     () => appointments.filter((a) => isClientAppointment(a)),
     [appointments],
   );
+  const todayEarned = sumAppointmentPrice(
+    getCompletedAppointments(clientAppointments),
+  );
+  const todayProjected = sumAppointmentPrice(
+    getUpcomingAppointments(clientAppointments, today),
+  );
 
   // Week stats
   const weekDates = useMemo(
@@ -81,22 +93,28 @@ export default function Today() {
   const weekAppts = useMemo(
     () =>
       allAppointments.filter(
-        (a) => weekDates.includes(a.date) && isClientAppointment(a),
+        (a) => weekDates.includes(a.date) && isClientRecord(a),
       ),
     [allAppointments, weekDates],
   );
-  const weekRevenue = weekAppts.reduce((s, a) => s + a.price, 0);
+  const weekEarned = sumAppointmentPrice(getCompletedAppointments(weekAppts));
+  const weekProjected = sumAppointmentPrice(
+    getUpcomingAppointments(weekAppts, today),
+  );
 
   // Month stats
   const monthPrefix = today.slice(0, 7);
   const monthAppts = useMemo(
     () =>
       allAppointments.filter(
-        (a) => a.date.startsWith(monthPrefix) && isClientAppointment(a),
+        (a) => a.date.startsWith(monthPrefix) && isClientRecord(a),
       ),
     [allAppointments, monthPrefix],
   );
-  const monthRevenue = monthAppts.reduce((s, a) => s + a.price, 0);
+  const monthEarned = sumAppointmentPrice(getCompletedAppointments(monthAppts));
+  const monthProjected = sumAppointmentPrice(
+    getUpcomingAppointments(monthAppts, today),
+  );
 
   const [modalState, setModalState] = useState<{
     isOpen: boolean;
@@ -176,11 +194,10 @@ export default function Today() {
               : ""}
             {" - "}
             <span className="font-semibold text-accent ml-1">
-              $
-              {clientAppointments
-                .reduce((sum, a) => sum + a.price, 0)
-                .toFixed(2)}{" "}
-              projected
+              ${todayEarned.toFixed(2)} earned
+              {todayProjected > 0
+                ? ` - $${todayProjected.toFixed(2)} projected`
+                : ""}
             </span>
           </p>
         )}
@@ -193,7 +210,7 @@ export default function Today() {
           <div className="flex items-center gap-1.5 mb-2">
             <TrendingUp size={13} className="text-muted-foreground" />
             <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-              Revenue
+              Money
             </span>
           </div>
           <div className="grid grid-cols-2 gap-2">
@@ -202,11 +219,13 @@ export default function Today() {
                 This Week
               </p>
               <p className="text-lg font-bold text-foreground mt-0.5">
-                ${weekRevenue.toFixed(0)}
+                ${weekEarned.toFixed(0)}
               </p>
               <p className="text-[10px] text-muted-foreground mt-0.5">
-                {weekAppts.length} appointment
-                {weekAppts.length !== 1 ? "s" : ""}
+                earned
+                {weekProjected > 0
+                  ? ` - $${weekProjected.toFixed(0)} projected`
+                  : ""}
               </p>
             </div>
             <div className="rounded-xl border border-border bg-card px-3 py-2.5">
@@ -214,11 +233,13 @@ export default function Today() {
                 This Month
               </p>
               <p className="text-lg font-bold text-foreground mt-0.5">
-                ${monthRevenue.toFixed(0)}
+                ${monthEarned.toFixed(0)}
               </p>
               <p className="text-[10px] text-muted-foreground mt-0.5">
-                {monthAppts.length} appointment
-                {monthAppts.length !== 1 ? "s" : ""}
+                earned
+                {monthProjected > 0
+                  ? ` - $${monthProjected.toFixed(0)} projected`
+                  : ""}
               </p>
             </div>
           </div>

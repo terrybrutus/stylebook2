@@ -24,6 +24,12 @@ import {
   isBlockedTime,
 } from "../lib/appointmentLifecycle";
 import {
+  compareAppointmentDateTime,
+  getCompletedAppointments,
+  getPastUnresolvedAppointments,
+  isClientRecord,
+} from "../lib/appointmentMetrics";
+import {
   doBlocksOverlap,
   findAvailableSlots,
   findNextAvailable,
@@ -281,23 +287,38 @@ export default function AppointmentModal({
           notes: c.notes,
         };
       }
-      const sorted = [...appointmentsRef.current].sort(
-        (a, b) =>
-          b.date.localeCompare(a.date) ||
-          b.startTime.localeCompare(a.startTime),
-      );
-      for (const a of sorted) {
-        if (!hist[a.clientName]?.lastDate) {
-          hist[a.clientName] = {
-            serviceId: a.serviceId,
-            serviceName: a.serviceName,
-            lastDate: a.date,
-            phone: hist[a.clientName]?.phone ?? a.phoneNumber,
-            notes: hist[a.clientName]?.notes ?? a.notes,
+      const byClient = new Map<string, Appointment[]>();
+      for (const appointment of appointmentsRef.current.filter(
+        isClientRecord,
+      )) {
+        const list = byClient.get(appointment.clientName) ?? [];
+        list.push(appointment);
+        byClient.set(appointment.clientName, list);
+      }
+      for (const [clientName, appts] of byClient) {
+        const past = [
+          ...getCompletedAppointments(appts),
+          ...getPastUnresolvedAppointments(appts, getTodayString()),
+        ].sort(compareAppointmentDateTime);
+        const mostRecent = past[past.length - 1];
+        const sortedContactAppts = [...appts].sort(compareAppointmentDateTime);
+        const latestContact = sortedContactAppts[sortedContactAppts.length - 1];
+        if (mostRecent) {
+          hist[clientName] = {
+            serviceId: mostRecent.serviceId,
+            serviceName: mostRecent.serviceName,
+            lastDate: mostRecent.date,
+            phone: hist[clientName]?.phone ?? latestContact?.phoneNumber,
+            notes: hist[clientName]?.notes ?? latestContact?.notes,
           };
-        } else {
-          hist[a.clientName].phone = hist[a.clientName].phone ?? a.phoneNumber;
-          hist[a.clientName].notes = hist[a.clientName].notes ?? a.notes;
+        } else if (latestContact) {
+          hist[clientName] = {
+            serviceId: "",
+            serviceName: "",
+            lastDate: "",
+            phone: hist[clientName]?.phone ?? latestContact.phoneNumber,
+            notes: hist[clientName]?.notes ?? latestContact.notes,
+          };
         }
       }
       setClientHistory(hist);
@@ -1459,7 +1480,7 @@ export default function AppointmentModal({
                           </div>
                         </div>
                         <p className="text-xs text-muted-foreground pl-4">
-                          Starts {phase.startTime} · {phase.phaseType}
+                          Starts {phase.startTime} - {phase.phaseType}
                         </p>
                       </div>
                     );

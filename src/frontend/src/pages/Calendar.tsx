@@ -13,7 +13,12 @@ import { useCallback, useEffect, useState } from "react";
 import { useShallow } from "zustand/shallow";
 import AppointmentModal from "../components/AppointmentModal";
 import QuickRebook from "../components/QuickRebook";
-import { isClientAppointment } from "../lib/appointmentLifecycle";
+import {
+  getCompletedAppointments,
+  getUpcomingAppointments,
+  isClientRecord,
+  sumAppointmentPrice,
+} from "../lib/appointmentMetrics";
 import { useAppStore } from "../store/useAppStore";
 import type { AppointmentModalState, CalendarView } from "../types";
 import { AgendaView } from "./calendar/AgendaView";
@@ -102,12 +107,16 @@ export default function Calendar() {
   const appointments = useAppStore(useShallow((s) => s.appointments));
   const dayAppts =
     view === "day"
-      ? appointments.filter(
-          (a) => a.date === currentDate && isClientAppointment(a),
-        )
+      ? appointments.filter((a) => a.date === currentDate && isClientRecord(a))
       : [];
-  const dayRevenue =
-    view === "day" ? dayAppts.reduce((sum, a) => sum + a.price, 0) : null;
+  const dayEarned =
+    view === "day"
+      ? sumAppointmentPrice(getCompletedAppointments(dayAppts))
+      : null;
+  const dayProjected =
+    view === "day"
+      ? sumAppointmentPrice(getUpcomingAppointments(dayAppts, getTodayStr()))
+      : null;
   const dayCount = view === "day" ? dayAppts.length : null;
 
   const handlePrev = useCallback(() => {
@@ -265,9 +274,14 @@ export default function Calendar() {
               {dayCount} appt{dayCount !== 1 ? "s" : ""}
             </span>
           )}
-          {dayRevenue !== null && dayRevenue > 0 && (
+          {dayEarned !== null && dayEarned > 0 && (
             <span className="text-xs font-semibold text-accent">
-              ${dayRevenue.toFixed(2)}
+              ${dayEarned.toFixed(2)} earned
+            </span>
+          )}
+          {dayProjected !== null && dayProjected > 0 && (
+            <span className="text-xs text-muted-foreground">
+              ${dayProjected.toFixed(2)} projected
             </span>
           )}
           <Button

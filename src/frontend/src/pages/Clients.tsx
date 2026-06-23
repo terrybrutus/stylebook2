@@ -1,5 +1,6 @@
 import {
   Calendar,
+  ChevronDown,
   ChevronRight,
   Clock,
   DollarSign,
@@ -18,9 +19,15 @@ import * as api from "../lib/api";
 import {
   APPOINTMENT_STATUS_LABELS,
   isActiveAppointment,
-  isBlockedTime,
   normalizeAppointmentStatus,
 } from "../lib/appointmentLifecycle";
+import {
+  getCompletedAppointments,
+  getPastUnresolvedAppointments,
+  getUpcomingAppointments,
+  isClientRecord,
+  sumAppointmentPrice,
+} from "../lib/appointmentMetrics";
 import {
   formatDate,
   formatDuration,
@@ -29,6 +36,11 @@ import {
 } from "../lib/utils";
 import { useAppStore } from "../store/useAppStore";
 import type { Appointment, Client, ClientContact } from "../types";
+
+function getTodayString() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
 
 // ─── Add/Edit Client Form ─────────────────────────────────────────────────────
 
@@ -204,9 +216,7 @@ export default function Clients() {
     }
 
     // Merge in appointment-derived data
-    for (const appt of appointments.filter(
-      (appointment) => !isBlockedTime(appointment),
-    )) {
+    for (const appt of appointments.filter(isClientRecord)) {
       const name = appt.clientName;
       const existing = map.get(name);
       if (!existing) {
@@ -441,9 +451,18 @@ function ClientRow({
   index: number;
   onSelect: () => void;
 }) {
-  const totalSpent = client.appointments
-    .filter(isActiveAppointment)
-    .reduce((sum, a) => sum + a.price, 0);
+  const todayStr = getTodayString();
+  const completed = getCompletedAppointments(client.appointments);
+  const upcoming = getUpcomingAppointments(client.appointments, todayStr);
+  const pastUnresolved = getPastUnresolvedAppointments(
+    client.appointments,
+    todayStr,
+  );
+  const earned = sumAppointmentPrice(completed);
+  const projected = sumAppointmentPrice(upcoming);
+  const pastVisitCount = completed.length + pastUnresolved.length;
+  const nextAppointment = upcoming[0];
+  const lastCompleted = completed[completed.length - 1];
   const inactiveCounts = client.appointments.reduce(
     (counts, appointment) => {
       const status = normalizeAppointmentStatus(appointment.status);
@@ -488,12 +507,30 @@ function ClientRow({
       <div className="flex-1 min-w-0">
         <p className="font-semibold text-sm text-foreground">{client.name}</p>
         <p className="text-xs text-muted-foreground mt-0.5">
-          {client.appointmentCount > 0
-            ? `${client.appointmentCount} visit${client.appointmentCount !== 1 ? "s" : ""}${client.lastDate ? ` · Last ${formatDate(client.lastDate, { month: "short", day: "numeric" })}` : ""}`
+          {client.appointments.length > 0
+            ? [
+                `${pastVisitCount} past visit${pastVisitCount !== 1 ? "s" : ""}`,
+                upcoming.length > 0
+                  ? `${upcoming.length} upcoming`
+                  : lastCompleted
+                    ? `Last ${formatDate(lastCompleted.date, { month: "short", day: "numeric" })}`
+                    : null,
+              ]
+                .filter(Boolean)
+                .join(" - ")
             : client.phone
               ? client.phone
               : "No appointments yet"}
         </p>
+        {nextAppointment && (
+          <p className="text-[10px] text-muted-foreground mt-0.5">
+            Next{" "}
+            {formatDate(nextAppointment.date, {
+              month: "short",
+              day: "numeric",
+            })}
+          </p>
+        )}
         {(inactiveCounts.canceled > 0 ||
           inactiveCounts.noShow > 0 ||
           inactiveCounts.rescheduled > 0) && (
@@ -510,14 +547,23 @@ function ClientRow({
                 : null,
             ]
               .filter(Boolean)
-              .join(" · ")}
+              .join(" - ")}
           </p>
         )}
       </div>
 
       <div className="flex items-center gap-2 flex-shrink-0">
-        {totalSpent > 0 && (
-          <span className="text-sm font-medium text-accent">${totalSpent}</span>
+        {(earned > 0 || projected > 0) && (
+          <div className="text-right leading-tight">
+            {earned > 0 && (
+              <p className="text-sm font-medium text-accent">${earned}</p>
+            )}
+            {projected > 0 && (
+              <p className="text-[10px] text-muted-foreground">
+                ${projected} projected
+              </p>
+            )}
+          </div>
         )}
         <ChevronRight size={16} className="text-muted-foreground" />
       </div>
@@ -541,26 +587,26 @@ function ClientDetail({
   onDelete: () => void;
 }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const todayStr = (() => {
-    const d = new Date();
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-  })();
-  const { upcoming, past, inactive } = useMemo(() => {
+  const [collapsedSections, setCollapsedSections] = useState<
+    Record<string, boolean>
+  >({});
+  const todayStr = getTodayString();
+  const { upcoming, completed, pastUnresolved, inactive } = useMemo(() => {
     const all = [...client.appointments].sort((a, b) => {
       const d = a.date.localeCompare(b.date);
       return d !== 0 ? d : a.startTime.localeCompare(b.startTime);
     });
-    const active = all.filter(isActiveAppointment);
     return {
-      upcoming: active.filter((a) => a.date >= todayStr),
-      past: active.filter((a) => a.date < todayStr).reverse(),
+      upcoming: getUpcomingAppointments(all, todayStr),
+      completed: getCompletedAppointments(all).reverse(),
+      pastUnresolved: getPastUnresolvedAppointments(all, todayStr).reverse(),
       inactive: all.filter((a) => !isActiveAppointment(a)).reverse(),
     };
   }, [client.appointments, todayStr]);
 
-  const totalSpent = client.appointments
-    .filter(isActiveAppointment)
-    .reduce((sum, a) => sum + a.price, 0);
+  const earned = sumAppointmentPrice(completed);
+  const projected = sumAppointmentPrice(upcoming);
+  const unresolvedValue = sumAppointmentPrice(pastUnresolved);
   const statusCounts = client.appointments.reduce(
     (counts, appointment) => {
       const status = normalizeAppointmentStatus(appointment.status);
@@ -580,6 +626,13 @@ function ClientDetail({
     contact?.phone ??
     client.appointments.find((a) => a.phoneNumber)?.phoneNumber;
   const notes = contact?.notes ?? client.notes;
+  const isSectionCollapsed = (key: string, defaultValue = false) =>
+    collapsedSections[key] ?? defaultValue;
+  const toggleSection = (key: string, defaultValue = false) =>
+    setCollapsedSections((state) => ({
+      ...state,
+      [key]: !(state[key] ?? defaultValue),
+    }));
 
   return (
     <div className="flex flex-col h-full" data-ocid="clients.detail.page">
@@ -646,8 +699,8 @@ function ClientDetail({
               {client.name}
             </h2>
             <p className="text-sm text-muted-foreground mt-0.5">
-              {client.appointmentCount} appointment
-              {client.appointmentCount !== 1 ? "s" : ""}
+              {completed.length + pastUnresolved.length} past -{" "}
+              {upcoming.length} upcoming
             </p>
             {phone && (
               <a
@@ -660,10 +713,20 @@ function ClientDetail({
               </a>
             )}
           </div>
-          {totalSpent > 0 && (
-            <div className="text-right flex-shrink-0">
-              <p className="text-lg font-bold text-accent">${totalSpent}</p>
-              <p className="text-xs text-muted-foreground">total spent</p>
+          {(earned > 0 || projected > 0 || unresolvedValue > 0) && (
+            <div className="text-right flex-shrink-0 leading-tight">
+              <p className="text-lg font-bold text-accent">${earned}</p>
+              <p className="text-xs text-muted-foreground">earned</p>
+              {projected > 0 && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  ${projected} projected
+                </p>
+              )}
+              {unresolvedValue > 0 && (
+                <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-0.5">
+                  ${unresolvedValue} past unresolved
+                </p>
+              )}
             </div>
           )}
         </div>
@@ -696,71 +759,58 @@ function ClientDetail({
       </div>
 
       <div className="flex-1 overflow-auto px-4 py-3 flex flex-col gap-4">
-        {upcoming.length === 0 && past.length === 0 && inactive.length === 0 ? (
+        {upcoming.length === 0 &&
+        completed.length === 0 &&
+        pastUnresolved.length === 0 &&
+        inactive.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-center">
             <Calendar size={28} className="text-muted-foreground/40 mb-3" />
             <p className="text-sm text-muted-foreground">No appointments yet</p>
           </div>
         ) : (
           <>
-            {upcoming.length > 0 && (
-              <div>
-                <p className="text-xs font-semibold text-accent uppercase tracking-wide mb-2">
-                  Upcoming ({upcoming.length})
-                </p>
-                <div
-                  className="flex flex-col gap-3"
-                  data-ocid="clients.detail.upcoming_list"
-                >
-                  {upcoming.map((appt, i) => (
-                    <AppointmentHistoryCard
-                      key={appt.id}
-                      appt={appt}
-                      index={i + 1}
-                      upcoming
-                    />
-                  ))}
-                </div>
-              </div>
-            )}
-            {past.length > 0 && (
-              <div>
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
-                  History ({past.length})
-                </p>
-                <div
-                  className="flex flex-col gap-3"
-                  data-ocid="clients.detail.history_list"
-                >
-                  {past.map((appt, i) => (
-                    <AppointmentHistoryCard
-                      key={appt.id}
-                      appt={appt}
-                      index={i + 1}
-                    />
-                  ))}
-                </div>
-              </div>
-            )}
-            {inactive.length > 0 && (
-              <div>
-                <p className="text-xs font-semibold text-amber-600 dark:text-amber-400 uppercase tracking-wide mb-2">
-                  Canceled / No-show / Rescheduled ({inactive.length})
-                </p>
-                <div
-                  className="flex flex-col gap-3"
-                  data-ocid="clients.detail.inactive_list"
-                >
-                  {inactive.map((appt, i) => (
-                    <AppointmentHistoryCard
-                      key={appt.id}
-                      appt={appt}
-                      index={i + 1}
-                    />
-                  ))}
-                </div>
-              </div>
-            )}
+            <AppointmentSection
+              title="Upcoming"
+              count={upcoming.length}
+              appointments={upcoming}
+              colorClass="text-accent"
+              collapsed={isSectionCollapsed("upcoming", upcoming.length > 5)}
+              onToggle={() => toggleSection("upcoming", upcoming.length > 5)}
+              ocid="clients.detail.upcoming_list"
+              upcoming
+            />
+            <AppointmentSection
+              title="Completed History"
+              count={completed.length}
+              appointments={completed}
+              colorClass="text-muted-foreground"
+              collapsed={isSectionCollapsed("completed", completed.length > 5)}
+              onToggle={() => toggleSection("completed", completed.length > 5)}
+              ocid="clients.detail.history_list"
+            />
+            <AppointmentSection
+              title="Past Unresolved"
+              count={pastUnresolved.length}
+              appointments={pastUnresolved}
+              colorClass="text-amber-600 dark:text-amber-400"
+              collapsed={isSectionCollapsed(
+                "past-unresolved",
+                pastUnresolved.length > 3,
+              )}
+              onToggle={() =>
+                toggleSection("past-unresolved", pastUnresolved.length > 3)
+              }
+              ocid="clients.detail.unresolved_list"
+            />
+            <AppointmentSection
+              title="Canceled / No-show / Rescheduled"
+              count={inactive.length}
+              appointments={inactive}
+              colorClass="text-amber-600 dark:text-amber-400"
+              collapsed={isSectionCollapsed("inactive", inactive.length > 3)}
+              onToggle={() => toggleSection("inactive", inactive.length > 3)}
+              ocid="clients.detail.inactive_list"
+            />
           </>
         )}
       </div>
@@ -768,7 +818,59 @@ function ClientDetail({
   );
 }
 
-// ─── Appointment History Card ─────────────────────────────────────────────────
+// Appointment History Card ─────────────────────────────────────────────────
+
+function AppointmentSection({
+  title,
+  count,
+  appointments,
+  colorClass,
+  collapsed,
+  onToggle,
+  ocid,
+  upcoming,
+}: {
+  title: string;
+  count: number;
+  appointments: Appointment[];
+  colorClass: string;
+  collapsed: boolean;
+  onToggle: () => void;
+  ocid: string;
+  upcoming?: boolean;
+}) {
+  if (count === 0) return null;
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={onToggle}
+        className={`mb-2 flex w-full items-center gap-2 text-left text-xs font-semibold uppercase tracking-wide ${colorClass}`}
+        aria-expanded={!collapsed}
+      >
+        <ChevronDown
+          size={14}
+          className={`transition-transform ${collapsed ? "-rotate-90" : ""}`}
+        />
+        <span>
+          {title} ({count})
+        </span>
+      </button>
+      {!collapsed && (
+        <div className="flex flex-col gap-3" data-ocid={ocid}>
+          {appointments.map((appt, i) => (
+            <AppointmentHistoryCard
+              key={appt.id}
+              appt={appt}
+              index={i + 1}
+              upcoming={upcoming}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function AppointmentHistoryCard({
   appt,
@@ -805,7 +907,7 @@ function AppointmentHistoryCard({
               day: "numeric",
               year: "numeric",
             })}
-            {" · "}
+            {" - "}
             {formatTime12(appt.startTime)}
           </p>
         </div>
