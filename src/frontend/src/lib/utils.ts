@@ -475,9 +475,11 @@ export function findNextAvailable(
   appointments: Appointment[],
   settings: Settings,
   excludeApptId?: string,
+  afterTime?: string,
   maxDays = 30,
 ): SlotSuggestion | null {
   const base = new Date(`${fromDate}T00:00:00`);
+  const afterMinutes = afterTime ? timeToMin(afterTime) : null;
   for (let i = 0; i <= maxDays; i++) {
     const d = new Date(base);
     d.setDate(base.getDate() + i);
@@ -490,7 +492,11 @@ export function findNextAvailable(
       settings,
       excludeApptId,
     );
-    if (slots.length > 0) return slots[0];
+    const nextSlot =
+      i === 0 && afterMinutes !== null
+        ? slots.find((slot) => timeToMin(slot.time) > afterMinutes)
+        : slots[0];
+    if (nextSlot) return nextSlot;
   }
   return null;
 }

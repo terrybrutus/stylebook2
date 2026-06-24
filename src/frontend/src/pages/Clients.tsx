@@ -35,7 +35,12 @@ import {
   formatTime12,
 } from "../lib/utils";
 import { useAppStore } from "../store/useAppStore";
-import type { Appointment, Client, ClientContact } from "../types";
+import type {
+  Appointment,
+  AppointmentStatus,
+  Client,
+  ClientContact,
+} from "../types";
 
 function getTodayString() {
   const d = new Date();
@@ -590,31 +595,36 @@ function ClientDetail({
   const [collapsedSections, setCollapsedSections] = useState<
     Record<string, boolean>
   >({});
+  const [statusFilter, setStatusFilter] = useState<
+    "all" | "upcoming" | "past_unresolved" | AppointmentStatus
+  >("all");
   const todayStr = getTodayString();
-  const { upcoming, completed, pastUnresolved, inactive } = useMemo(() => {
-    const all = [...client.appointments].sort((a, b) => {
-      const d = a.date.localeCompare(b.date);
-      return d !== 0 ? d : a.startTime.localeCompare(b.startTime);
-    });
-    return {
-      upcoming: getUpcomingAppointments(all, todayStr),
-      completed: getCompletedAppointments(all).reverse(),
-      pastUnresolved: getPastUnresolvedAppointments(all, todayStr).reverse(),
-      inactive: all.filter((a) => !isActiveAppointment(a)).reverse(),
-    };
-  }, [client.appointments, todayStr]);
+  const { upcoming, completed, pastUnresolved, canceled, noShow, rescheduled } =
+    useMemo(() => {
+      const all = [...client.appointments].sort((a, b) => {
+        const d = a.date.localeCompare(b.date);
+        return d !== 0 ? d : a.startTime.localeCompare(b.startTime);
+      });
+      const inactive = all.filter((a) => !isActiveAppointment(a)).reverse();
+      return {
+        upcoming: getUpcomingAppointments(all, todayStr),
+        completed: getCompletedAppointments(all).reverse(),
+        pastUnresolved: getPastUnresolvedAppointments(all, todayStr).reverse(),
+        canceled: inactive.filter(
+          (a) => normalizeAppointmentStatus(a.status) === "canceled",
+        ),
+        noShow: inactive.filter(
+          (a) => normalizeAppointmentStatus(a.status) === "no_show",
+        ),
+        rescheduled: inactive.filter(
+          (a) => normalizeAppointmentStatus(a.status) === "rescheduled",
+        ),
+      };
+    }, [client.appointments, todayStr]);
 
   const earned = sumAppointmentPrice(completed);
   const projected = sumAppointmentPrice(upcoming);
   const unresolvedValue = sumAppointmentPrice(pastUnresolved);
-  const statusCounts = client.appointments.reduce(
-    (counts, appointment) => {
-      const status = normalizeAppointmentStatus(appointment.status);
-      counts[status] = (counts[status] ?? 0) + 1;
-      return counts;
-    },
-    {} as Record<string, number>,
-  );
   const initials = client.name
     .split(" ")
     .map((n) => n[0])
@@ -633,6 +643,18 @@ function ClientDetail({
       ...state,
       [key]: !(state[key] ?? defaultValue),
     }));
+  const showSection = (
+    key: typeof statusFilter,
+    statuses: (typeof statusFilter)[] = [key],
+  ) => statusFilter === "all" || statuses.includes(statusFilter);
+  const emptyFilter =
+    statusFilter !== "all" &&
+    ((statusFilter === "upcoming" && upcoming.length === 0) ||
+      (statusFilter === "completed" && completed.length === 0) ||
+      (statusFilter === "past_unresolved" && pastUnresolved.length === 0) ||
+      (statusFilter === "canceled" && canceled.length === 0) ||
+      (statusFilter === "no_show" && noShow.length === 0) ||
+      (statusFilter === "rescheduled" && rescheduled.length === 0));
 
   return (
     <div className="flex flex-col h-full" data-ocid="clients.detail.page">
@@ -737,23 +759,53 @@ function ClientDetail({
           </div>
         )}
         <div className="mt-3 flex flex-wrap gap-1.5">
-          {(
-            [
-              "scheduled",
-              "completed",
-              "canceled",
-              "no_show",
-              "rescheduled",
-            ] as const
-          )
-            .filter((status) => (statusCounts[status] ?? 0) > 0)
-            .map((status) => (
-              <span
-                key={status}
-                className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground"
+          {[
+            {
+              key: "all" as const,
+              label: "All",
+              count: client.appointments.length,
+            },
+            {
+              key: "upcoming" as const,
+              label: "Upcoming",
+              count: upcoming.length,
+            },
+            {
+              key: "completed" as const,
+              label: "Completed",
+              count: completed.length,
+            },
+            {
+              key: "past_unresolved" as const,
+              label: "Past unresolved",
+              count: pastUnresolved.length,
+            },
+            {
+              key: "canceled" as const,
+              label: "Canceled",
+              count: canceled.length,
+            },
+            { key: "no_show" as const, label: "No-show", count: noShow.length },
+            {
+              key: "rescheduled" as const,
+              label: "Rescheduled",
+              count: rescheduled.length,
+            },
+          ]
+            .filter((item) => item.key === "all" || item.count > 0)
+            .map((item) => (
+              <button
+                key={item.key}
+                type="button"
+                onClick={() => setStatusFilter(item.key)}
+                className={`rounded-full px-2 py-0.5 text-[10px] font-medium transition-colors ${
+                  statusFilter === item.key
+                    ? "bg-accent text-accent-foreground"
+                    : "bg-muted text-muted-foreground hover:bg-muted/70"
+                }`}
               >
-                {APPOINTMENT_STATUS_LABELS[status]} {statusCounts[status]}
-              </span>
+                {item.label} {item.count}
+              </button>
             ))}
         </div>
       </div>
@@ -762,55 +814,104 @@ function ClientDetail({
         {upcoming.length === 0 &&
         completed.length === 0 &&
         pastUnresolved.length === 0 &&
-        inactive.length === 0 ? (
+        canceled.length === 0 &&
+        noShow.length === 0 &&
+        rescheduled.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-center">
             <Calendar size={28} className="text-muted-foreground/40 mb-3" />
             <p className="text-sm text-muted-foreground">No appointments yet</p>
           </div>
+        ) : emptyFilter ? (
+          <div className="flex flex-col items-center justify-center py-16 text-center">
+            <Calendar size={28} className="text-muted-foreground/40 mb-3" />
+            <p className="text-sm text-muted-foreground">
+              No appointments match this filter
+            </p>
+          </div>
         ) : (
           <>
-            <AppointmentSection
-              title="Upcoming"
-              count={upcoming.length}
-              appointments={upcoming}
-              colorClass="text-accent"
-              collapsed={isSectionCollapsed("upcoming", upcoming.length > 5)}
-              onToggle={() => toggleSection("upcoming", upcoming.length > 5)}
-              ocid="clients.detail.upcoming_list"
-              upcoming
-            />
-            <AppointmentSection
-              title="Completed History"
-              count={completed.length}
-              appointments={completed}
-              colorClass="text-muted-foreground"
-              collapsed={isSectionCollapsed("completed", completed.length > 5)}
-              onToggle={() => toggleSection("completed", completed.length > 5)}
-              ocid="clients.detail.history_list"
-            />
-            <AppointmentSection
-              title="Past Unresolved"
-              count={pastUnresolved.length}
-              appointments={pastUnresolved}
-              colorClass="text-amber-600 dark:text-amber-400"
-              collapsed={isSectionCollapsed(
-                "past-unresolved",
-                pastUnresolved.length > 3,
-              )}
-              onToggle={() =>
-                toggleSection("past-unresolved", pastUnresolved.length > 3)
-              }
-              ocid="clients.detail.unresolved_list"
-            />
-            <AppointmentSection
-              title="Canceled / No-show / Rescheduled"
-              count={inactive.length}
-              appointments={inactive}
-              colorClass="text-amber-600 dark:text-amber-400"
-              collapsed={isSectionCollapsed("inactive", inactive.length > 3)}
-              onToggle={() => toggleSection("inactive", inactive.length > 3)}
-              ocid="clients.detail.inactive_list"
-            />
+            {showSection("upcoming") && (
+              <AppointmentSection
+                title="Upcoming"
+                count={upcoming.length}
+                appointments={upcoming}
+                colorClass="text-accent"
+                collapsed={isSectionCollapsed("upcoming", upcoming.length > 5)}
+                onToggle={() => toggleSection("upcoming", upcoming.length > 5)}
+                ocid="clients.detail.upcoming_list"
+                upcoming
+              />
+            )}
+            {showSection("completed") && (
+              <AppointmentSection
+                title="Completed History"
+                count={completed.length}
+                appointments={completed}
+                colorClass="text-muted-foreground"
+                collapsed={isSectionCollapsed(
+                  "completed",
+                  completed.length > 5,
+                )}
+                onToggle={() =>
+                  toggleSection("completed", completed.length > 5)
+                }
+                ocid="clients.detail.history_list"
+              />
+            )}
+            {showSection("past_unresolved") && (
+              <AppointmentSection
+                title="Past Unresolved"
+                count={pastUnresolved.length}
+                appointments={pastUnresolved}
+                colorClass="text-amber-600 dark:text-amber-400"
+                collapsed={isSectionCollapsed(
+                  "past-unresolved",
+                  pastUnresolved.length > 3,
+                )}
+                onToggle={() =>
+                  toggleSection("past-unresolved", pastUnresolved.length > 3)
+                }
+                ocid="clients.detail.unresolved_list"
+              />
+            )}
+            {showSection("canceled") && (
+              <AppointmentSection
+                title="Canceled"
+                count={canceled.length}
+                appointments={canceled}
+                colorClass="text-amber-600 dark:text-amber-400"
+                collapsed={isSectionCollapsed("canceled", canceled.length > 3)}
+                onToggle={() => toggleSection("canceled", canceled.length > 3)}
+                ocid="clients.detail.canceled_list"
+              />
+            )}
+            {showSection("no_show") && (
+              <AppointmentSection
+                title="No-show"
+                count={noShow.length}
+                appointments={noShow}
+                colorClass="text-amber-600 dark:text-amber-400"
+                collapsed={isSectionCollapsed("no-show", noShow.length > 3)}
+                onToggle={() => toggleSection("no-show", noShow.length > 3)}
+                ocid="clients.detail.no_show_list"
+              />
+            )}
+            {showSection("rescheduled") && (
+              <AppointmentSection
+                title="Rescheduled"
+                count={rescheduled.length}
+                appointments={rescheduled}
+                colorClass="text-amber-600 dark:text-amber-400"
+                collapsed={isSectionCollapsed(
+                  "rescheduled",
+                  rescheduled.length > 3,
+                )}
+                onToggle={() =>
+                  toggleSection("rescheduled", rescheduled.length > 3)
+                }
+                ocid="clients.detail.rescheduled_list"
+              />
+            )}
           </>
         )}
       </div>

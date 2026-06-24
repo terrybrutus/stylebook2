@@ -29,11 +29,13 @@ const STATUS_OPTIONS: {
 interface Props {
   appointment: Appointment | null;
   onClose: () => void;
+  onReschedule?: (appointment: Appointment) => void;
 }
 
 export default function AppointmentCancelModal({
   appointment,
   onClose,
+  onReschedule,
 }: Props) {
   const updateAppointment = useAppStore((s) => s.updateAppointment);
   const deleteAppointment = useAppStore((s) => s.deleteAppointment);
@@ -72,7 +74,11 @@ export default function AppointmentCancelModal({
         statusReason: updated.statusReason,
         statusUpdatedAt: updated.statusUpdatedAt,
       });
-      onClose();
+      if (selected === "rescheduled" && onReschedule) {
+        onReschedule(updated);
+      } else {
+        onClose();
+      }
     } catch (err) {
       console.error("Appointment status update failed", err);
       updateAppointment(appointment);

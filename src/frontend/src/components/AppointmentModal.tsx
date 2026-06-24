@@ -143,6 +143,7 @@ export default function AppointmentModal({
   const addClientContact = useAppStore((s) => s.addClientContact);
   const updateClientContact = useAppStore((s) => s.updateClientContact);
   const [cancelTarget, setCancelTarget] = useState<Appointment | null>(null);
+  const [localMode, setLocalMode] = useState<"create" | "edit">(mode);
   const [form, setForm] = useState<FormState>(
     defaultForm(appointment, prefillDate, prefillTime, services),
   );
@@ -189,6 +190,11 @@ export default function AppointmentModal({
   const appointmentsRef = useRef(appointments);
   servicesRef.current = services;
   appointmentsRef.current = appointments;
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setLocalMode(mode);
+  }, [isOpen, mode]);
 
   // Reset form when modal opens or the appointment being edited changes.
   // IMPORTANT: deps must NOT include `services` or `appointments` — those are
@@ -434,7 +440,7 @@ export default function AppointmentModal({
   }
 
   function handleServiceChange(newId: string) {
-    if (mode === "edit" && appointment && form.serviceId !== newId) {
+    if (localMode === "edit" && appointment && form.serviceId !== newId) {
       setPendingServiceId(newId);
       setShowServiceBanner(true);
       return;
@@ -566,7 +572,7 @@ export default function AppointmentModal({
         : [{ start: form.startTime, dur: totalDuration, isProcessing: false }];
 
     for (const existing of appointments) {
-      if (mode === "edit" && appointment && existing.id === appointment.id)
+      if (localMode === "edit" && appointment && existing.id === appointment.id)
         continue;
       if (!isActiveAppointment(existing)) continue;
       if (existing.date !== form.date) continue;
@@ -666,19 +672,22 @@ export default function AppointmentModal({
       appointments,
       settings,
       appointment?.id,
+      form.startTime,
     );
     setFindingNext(false);
     if (result) {
       const changedDate = result.date !== form.date;
       handleSelectSlot(result);
-      if (changedDate) {
-        const label = formatDate(result.date, {
-          weekday: "long",
-          month: "long",
-          day: "numeric",
-        });
-        setFindNextMsg(`Moved to ${label}`);
-      }
+      const label = formatDate(result.date, {
+        weekday: "long",
+        month: "long",
+        day: "numeric",
+      });
+      setFindNextMsg(
+        changedDate
+          ? `Moved to ${label} at ${formatTime12(result.time)}`
+          : `Next opening: ${formatTime12(result.time)}`,
+      );
     } else {
       setFindNextMsg("No availability found in the next 30 days.");
     }
@@ -746,7 +755,7 @@ export default function AppointmentModal({
         }
       }
 
-      if (mode === "create") {
+      if (localMode === "create") {
         // Create the first (or only) appointment
         const created = await createAppointment(input);
         addAppointment(created);
@@ -797,7 +806,9 @@ export default function AppointmentModal({
       open
       className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-transparent p-0 max-w-none w-full h-full"
       data-ocid="appointment.dialog"
-      aria-label={mode === "create" ? "New Appointment" : "Edit Appointment"}
+      aria-label={
+        localMode === "create" ? "New Appointment" : "Edit Appointment"
+      }
     >
       {/* Backdrop */}
       <div
@@ -817,10 +828,10 @@ export default function AppointmentModal({
         <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-border flex-shrink-0">
           <h2 className="text-lg font-semibold">
             {isBlockEntry
-              ? mode === "create"
+              ? localMode === "create"
                 ? "Block Time"
                 : "Edit Blocked Time"
-              : mode === "create"
+              : localMode === "create"
                 ? "New Appointment"
                 : "Edit Appointment"}
           </h2>
@@ -966,7 +977,7 @@ export default function AppointmentModal({
           className="flex-1 overflow-y-auto px-5 py-4 space-y-4"
           style={{ overscrollBehavior: "contain" }}
         >
-          {mode === "create" && (
+          {localMode === "create" && (
             <div className="grid grid-cols-2 gap-1 rounded-lg bg-muted p-1">
               <button
                 type="button"
@@ -1530,7 +1541,7 @@ export default function AppointmentModal({
         </div>
 
         {/* Recurring — create mode only */}
-        {mode === "create" && !isBlockEntry && (
+        {localMode === "create" && !isBlockEntry && (
           <div className="px-5 py-3 border-t border-border/60">
             <button
               type="button"
@@ -1607,15 +1618,15 @@ export default function AppointmentModal({
               {submitting
                 ? "Saving…"
                 : isBlockEntry
-                  ? mode === "create"
+                  ? localMode === "create"
                     ? "Block Time"
                     : "Save Block"
-                  : mode === "create"
+                  : localMode === "create"
                     ? "Book Appointment"
                     : "Save Changes"}
             </Button>
           </div>
-          {mode === "edit" && appointment && (
+          {localMode === "edit" && appointment && (
             <Button
               type="button"
               variant="ghost"
@@ -1634,6 +1645,26 @@ export default function AppointmentModal({
       </div>
       <AppointmentCancelModal
         appointment={cancelTarget}
+        onReschedule={(updated) => {
+          setCancelTarget(null);
+          setLocalMode("create");
+          setFindNextMsg(
+            "Original appointment marked rescheduled. Choose the replacement date and time.",
+          );
+          setForm((current) => ({
+            ...current,
+            clientName: updated.clientName,
+            phone: updated.phoneNumber ?? "",
+            serviceId: updated.serviceId,
+            date: updated.date,
+            startTime: updated.startTime,
+            durationHours: Math.floor(updated.durationMinutes / 60),
+            durationMinutes: updated.durationMinutes % 60,
+            price: String(updated.price),
+            notes: updated.notes ?? "",
+            phases: updated.phases,
+          }));
+        }}
         onClose={() => {
           setCancelTarget(null);
           onClose();
